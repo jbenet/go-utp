@@ -79,7 +79,7 @@ func dial(n string, laddr, raddr *UTPAddr, timeout time.Duration) (*UTPConn, err
 		seq:   1,
 		ack:   0,
 		diff:  0,
-		state: SYN_SENT,
+		state: state_syn_sent,
 
 		sendch: make(chan *packetBase, 10),
 		recvch: make(chan *packet, 2),
@@ -88,7 +88,7 @@ func dial(n string, laddr, raddr *UTPAddr, timeout time.Duration) (*UTPConn, err
 		connch: make(chan error, 1),
 		finch:  make(chan int, 1),
 
-		sendbuf: newPacketBuffer(WINDOW_SIZE, 1),
+		sendbuf: newPacketBuffer(window_size, 1),
 		closefunc: func() error {
 			return conn.Close()
 		},
@@ -97,7 +97,7 @@ func dial(n string, laddr, raddr *UTPAddr, timeout time.Duration) (*UTPConn, err
 	go c.recv()
 	go c.loop()
 
-	c.sendch <- &packetBase{ST_SYN, 0, nil, 0}
+	c.sendch <- &packetBase{st_syn, 0, nil, 0}
 
 	var t <-chan time.Time
 	if timeout != 0 {
@@ -107,12 +107,12 @@ func dial(n string, laddr, raddr *UTPAddr, timeout time.Duration) (*UTPConn, err
 	select {
 	case err := <-c.connch:
 		if err != nil {
-			c.setState(CLOSED)
+			c.setState(state_closed)
 			return nil, err
 		}
 		return &c, nil
 	case <-t:
-		c.setState(CLOSED)
+		c.setState(state_closed)
 		return nil, &timeoutError{}
 	}
 }
@@ -197,13 +197,13 @@ func (c *UTPConn) Write(b []byte) (int, error) {
 
 	buf := bytes.NewBuffer(append([]byte(nil), b...))
 	for {
-		var payload [MSS]byte
+		var payload [mss]byte
 		l, err := buf.Read(payload[:])
 		if err != nil {
 			break
 		}
-		c.sendch <- &packetBase{ST_DATA, 0, payload[:l], 0}
-		if l < MSS {
+		c.sendch <- &packetBase{st_data, 0, payload[:l], 0}
+		if l < mss {
 			break
 		}
 	}
@@ -245,7 +245,7 @@ func readPacket(data []byte) (packet, error) {
 	if err != nil {
 		return p, err
 	}
-	if p.header.ver != VERSION {
+	if p.header.ver != version {
 		return p, errors.New("unsupported header version")
 	}
 	return p, nil
@@ -253,7 +253,7 @@ func readPacket(data []byte) (packet, error) {
 
 func (c *UTPConn) recv() {
 	for {
-		var buf [MTU]byte
+		var buf [mtu]byte
 		len, addr, err := c.conn.ReadFromUDP(buf[:])
 		if err != nil {
 			return
@@ -309,7 +309,7 @@ func (c *UTPConn) sendPacket(b packetBase) {
 		if err != nil {
 			return
 		}
-		if b.typ != ST_STATE {
+		if b.typ != st_state {
 			c.sendbuf.push(*p, p.header.seq)
 		}
 	}
@@ -333,7 +333,7 @@ func (c *UTPConn) processPacket(p packet) {
 	c.diff = currentMillisecond() - p.header.t
 
 	state := c.getState()
-	if p.header.typ == ST_STATE {
+	if p.header.typ == st_state {
 		c.sendbuf.fetch(p.header.ack)
 		c.sendbuf.compact()
 		if state.state != nil {
@@ -343,25 +343,25 @@ func (c *UTPConn) processPacket(p packet) {
 		if c.recvbuf == nil {
 			return
 		}
-		c.sendch <- &packetBase{ST_STATE, 0, nil, p.header.seq}
+		c.sendch <- &packetBase{st_state, 0, nil, p.header.seq}
 		c.recvbuf.push(p, p.header.seq)
 		for _, s := range c.recvbuf.sequence() {
 			if c.ack < s.header.seq {
 				c.ack = s.header.seq
 				switch s.header.typ {
-				case ST_DATA:
+				case st_data:
 					if state.data != nil {
 						state.data(c, p)
 					}
-				case ST_FIN:
+				case st_fin:
 					if state.fin != nil {
 						state.fin(c, p)
 					}
-				case ST_STATE:
+				case st_state:
 					if state.state != nil {
 						state.state(c, p)
 					}
-				case ST_RESET:
+				case st_reset:
 					if state.reset != nil {
 						state.reset(c, p)
 					}
@@ -372,17 +372,17 @@ func (c *UTPConn) processPacket(p packet) {
 }
 
 func (c *UTPConn) makePacket(b packetBase, ack uint16) *packet {
-	wnd := WINDOW_SIZE * MTU
+	wnd := window_size * mtu
 	if c.recvbuf != nil {
-		wnd = c.recvbuf.space() * MTU
+		wnd = c.recvbuf.space() * mtu
 	}
 	id := c.sid
-	if b.typ == ST_SYN {
+	if b.typ == st_syn {
 		id = c.rid
 	}
 	h := header{
 		typ:  b.typ,
-		ver:  VERSION,
+		ver:  version,
 		ext:  b.ext,
 		id:   id,
 		t:    currentMillisecond(),
@@ -391,10 +391,10 @@ func (c *UTPConn) makePacket(b packetBase, ack uint16) *packet {
 		seq:  c.seq,
 		ack:  ack,
 	}
-	if b.typ == ST_FIN {
+	if b.typ == st_fin {
 		c.eofid = c.seq
 	}
-	if !(b.typ == ST_STATE && len(b.payload) == 0) {
+	if !(b.typ == st_state && len(b.payload) == 0) {
 		c.seq++
 	}
 	return &packet{header: h, payload: b.payload}
@@ -419,12 +419,12 @@ func (c *UTPConn) close() {
 		close(c.recvch)
 		close(c.readch)
 		close(c.finch)
-		c.setState(CLOSED)
+		c.setState(state_closed)
 	}
 }
 
 func (c *UTPConn) closing() {
-	c.setState(CLOSING)
+	c.setState(state_closing)
 }
 
 type state struct {
@@ -439,11 +439,11 @@ type state struct {
 	closed   bool
 }
 
-var CLOSED state = state{
+var state_closed state = state{
 	closed: true,
 }
 
-var CLOSING state = state{
+var state_closing state = state{
 	data: func(c *UTPConn, p packet) {
 		c.readch <- append([]byte(nil), p.payload...)
 		if c.recvbuf.empty() && c.sendbuf.empty() {
@@ -458,10 +458,10 @@ var CLOSING state = state{
 	readable: true,
 }
 
-var SYN_SENT state = state{
+var state_syn_sent state = state{
 	state: func(c *UTPConn, p packet) {
-		c.recvbuf = newPacketBuffer(WINDOW_SIZE, int(p.header.seq))
-		c.setState(CONNECTED)
+		c.recvbuf = newPacketBuffer(window_size, int(p.header.seq))
+		c.setState(state_connected)
 		c.connch <- nil
 	},
 	active:   true,
@@ -469,7 +469,7 @@ var SYN_SENT state = state{
 	writable: true,
 }
 
-var CONNECTED state = state{
+var state_connected state = state{
 	data: func(c *UTPConn, p packet) {
 		c.readch <- append([]byte(nil), p.payload...)
 	},
@@ -485,15 +485,15 @@ var CONNECTED state = state{
 		c.sendbuf.compact()
 	},
 	exit: func(c *UTPConn) {
-		c.sendch <- &packetBase{ST_FIN, 0, nil, 0}
-		c.setState(FIN_SENT)
+		c.sendch <- &packetBase{st_fin, 0, nil, 0}
+		c.setState(state_fin_sent)
 	},
 	active:   true,
 	readable: true,
 	writable: true,
 }
 
-var FIN_SENT state = state{
+var state_fin_sent state = state{
 	state: func(c *UTPConn, p packet) {
 		if p.header.ack == c.eofid {
 			if c.recvbuf.empty() && c.sendbuf.empty() {

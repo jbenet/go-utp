@@ -1,27 +1,21 @@
 package utp
 
 const (
-	VERSION = 1
+	version = 1
 
-	ST_DATA  = 0
-	ST_FIN   = 1
-	ST_STATE = 2
-	ST_RESET = 3
-	ST_SYN   = 4
+	st_data  = 0
+	st_fin   = 1
+	st_state = 2
+	st_reset = 3
+	st_syn   = 4
 
-	EXT_NONE          = 0
-	EXT_SELECTIVE_ACK = 1
+	ext_none          = 0
+	ext_selective_ack = 1
 
-	HEADER_SIZE = 20
-	MTU         = 1400
-	MSS         = MTU - HEADER_SIZE
-	WINDOW_SIZE = 180
-
-	CS_SYN_CLOSE = iota
-	CS_SYN_LISTEN
-	CS_SYN_SENT
-	CS_SYN_CONNECTED
-	CS_SYN_CLOSING
+	header_size = 20
+	mtu         = 1400
+	mss         = mtu - header_size
+	window_size = 180
 )
 
 type timeoutError struct{}

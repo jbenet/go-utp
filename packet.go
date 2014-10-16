@@ -96,18 +96,18 @@ func (p *packet) UnmarshalBinary(data []byte) error {
 	return nil
 }
 
-func (p *packet) String() string {
+func (p packet) String() string {
 	var s string = fmt.Sprintf("[%d ", p.header.id)
 	switch p.header.typ {
-	case ST_DATA:
+	case st_data:
 		s += "ST_DATA"
-	case ST_FIN:
+	case st_fin:
 		s += "ST_FIN"
-	case ST_STATE:
+	case st_state:
 		s += "ST_STATE"
-	case ST_RESET:
+	case st_reset:
 		s += "ST_RESET"
-	case ST_SYN:
+	case st_syn:
 		s += "ST_SYN"
 	}
 	s += fmt.Sprintf(" seq:%d ack:%d len:%d", p.header.seq, p.header.ack, len(p.payload))

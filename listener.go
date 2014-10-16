@@ -42,7 +42,7 @@ func ListenUTP(n string, laddr *UTPAddr) (*UTPListener, error) {
 
 func (l *UTPListener) listen() {
 	for {
-		var buf [MTU]byte
+		var buf [mtu]byte
 		len, addr, err := l.conn.ReadFromUDP(buf[:])
 		if err != nil {
 			l.err <- err
@@ -57,14 +57,14 @@ func (l *UTPListener) listen() {
 
 func (l *UTPListener) processPacket(p packet, addr *net.UDPAddr) {
 	switch p.header.typ {
-	case ST_DATA, ST_FIN, ST_STATE, ST_RESET:
+	case st_data, st_fin, st_state, st_reset:
 		if c := l.conns.get(p.header.id); c != nil {
 			state := c.getState()
 			if !state.closed {
 				c.recvch <- &p
 			}
 		}
-	case ST_SYN:
+	case st_syn:
 		sid := p.header.id + 1
 		if !l.conns.contains(sid) {
 			seq := rand.Intn(math.MaxUint16)
@@ -76,7 +76,7 @@ func (l *UTPListener) processPacket(p packet, addr *net.UDPAddr) {
 				seq:   uint16(seq),
 				ack:   p.header.seq,
 				diff:  currentMillisecond() - p.header.t,
-				state: CONNECTED,
+				state: state_connected,
 
 				sendch: make(chan *packetBase, 10),
 				recvch: make(chan *packet, 2),
@@ -84,8 +84,8 @@ func (l *UTPListener) processPacket(p packet, addr *net.UDPAddr) {
 				readch: make(chan []byte, 100),
 				finch:  make(chan int, 1),
 
-				recvbuf:   newPacketBuffer(WINDOW_SIZE, int(p.header.seq)),
-				sendbuf:   newPacketBuffer(WINDOW_SIZE, seq),
+				recvbuf:   newPacketBuffer(window_size, int(p.header.seq)),
+				sendbuf:   newPacketBuffer(window_size, seq),
 				closefunc: func() error { return nil },
 			}
 

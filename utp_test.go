@@ -271,9 +271,9 @@ func TestAcceptClosedListener(t *testing.T) {
 
 func TestPacketBinary(t *testing.T) {
 	h := header{
-		typ:  ST_FIN,
-		ver:  VERSION,
-		ext:  EXT_SELECTIVE_ACK,
+		typ:  st_fin,
+		ver:  version,
+		ext:  ext_selective_ack,
 		id:   100,
 		t:    50000,
 		diff: 10000,
@@ -390,7 +390,7 @@ func newProxy(laddr, saddr, caddr *net.UDPAddr, rate float32) (*proxy, error) {
 	}
 	go func() {
 		for {
-			var buf [MTU]byte
+			var buf [mtu]byte
 			len, addr, err := ln.ReadFromUDP(buf[:])
 			if err != nil {
 				return
