@@ -3,6 +3,9 @@ utp
 
 uTP (Micro Transport Protocol) implementation
 
+[![Build Status](https://travis-ci.org/h2so5/utp.svg)](https://travis-ci.org/h2so5/utp)
+[![GoDoc](https://godoc.org/github.com/h2so5/utp?status.svg)](http://godoc.org/github.com/h2so5/utp)
+
 **warning: This is a buggy alpha version.**
 
 ## Installation
