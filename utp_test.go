@@ -206,11 +206,7 @@ func TestLongReadWrite(t *testing.T) {
 }
 
 func TestAccept(t *testing.T) {
-	addr, err := ResolveUTPAddr("utp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	ln, err := ListenUTP("utp", addr)
+	ln, err := Listen("utp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -230,11 +226,7 @@ func TestAccept(t *testing.T) {
 }
 
 func TestAcceptDeadline(t *testing.T) {
-	addr, err := ResolveUTPAddr("utp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	ln, err := ListenUTP("utp", addr)
+	ln, err := Listen("utp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -247,11 +239,7 @@ func TestAcceptDeadline(t *testing.T) {
 }
 
 func TestAcceptClosedListener(t *testing.T) {
-	addr, err := ResolveUTPAddr("utp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	ln, err := ListenUTP("utp", addr)
+	ln, err := Listen("utp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -23,8 +23,7 @@ package main
 import "github.com/h2so5/utp"
 
 func main() {
-	addr, _ := utp.ResolveUTPAddr("utp", ":11000")
-	ln, _ := utp.ListenUTP("utp", addr)
+	ln, _ := utp.Listen("utp", ":11000")
 	defer ln.Close()
 
 	conn, _ := ln.AcceptUTP()

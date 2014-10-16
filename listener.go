@@ -18,6 +18,14 @@ type UTPListener struct {
 	deadline time.Time
 }
 
+func Listen(n, laddr string) (*UTPListener, error) {
+	addr, err := ResolveUTPAddr(n, laddr)
+	if err != nil {
+		return nil, err
+	}
+	return ListenUTP(n, addr)
+}
+
 func ListenUTP(n string, laddr *UTPAddr) (*UTPListener, error) {
 	udpnet, err := utp2udp(n)
 	if err != nil {
