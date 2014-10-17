@@ -270,11 +270,13 @@ func (c *UTPConn) recv() {
 
 func (c *UTPConn) loop() {
 	var recvExit, sendExit bool
+	var lastReceived time.Time
 	for {
 		select {
 		case p := <-c.recvch:
 			if p != nil {
 				c.processPacket(*p)
+				lastReceived = time.Now()
 			} else {
 				recvExit = true
 			}
@@ -285,10 +287,16 @@ func (c *UTPConn) loop() {
 			} else {
 				sendExit = true
 			}
+
 		case <-time.After(500 * time.Millisecond):
-			p, err := c.sendbuf.first()
-			if err == nil {
-				c.resendPacket(p)
+			state := c.getState()
+			if !state.active && time.Now().Sub(lastReceived).Seconds() > 0.5 {
+				c.close()
+			} else {
+				p, err := c.sendbuf.first()
+				if err == nil {
+					c.resendPacket(p)
+				}
 			}
 		}
 		if recvExit && sendExit {
