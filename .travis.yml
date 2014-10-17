@@ -3,3 +3,4 @@ language: go
 script:
  - go test -timeout 15s -v
  - go test -timeout 15s -v -race
+ - cd _ucat_test; make test
