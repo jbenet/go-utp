@@ -92,6 +92,8 @@ func (l *UTPListener) processPacket(p packet, addr *net.UDPAddr) {
 				readch: make(chan []byte, 100),
 				finch:  make(chan int, 1),
 
+				keepalivech: make(chan time.Duration),
+
 				recvbuf:   newPacketBuffer(window_size, int(p.header.seq)),
 				sendbuf:   newPacketBuffer(window_size, seq),
 				closefunc: func() error { return nil },

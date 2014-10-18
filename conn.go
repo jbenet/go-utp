@@ -24,10 +24,11 @@ type UTPConn struct {
 	sendch chan *packetBase
 	recvch chan *packet
 
-	readch chan []byte
-	connch chan error
-	finch  chan int
-	eofid  uint16
+	readch      chan []byte
+	connch      chan error
+	finch       chan int
+	eofid       uint16
+	keepalivech chan time.Duration
 
 	readbuf   bytes.Buffer
 	recvbuf   *packetBuffer
@@ -87,6 +88,8 @@ func dial(n string, laddr, raddr *UTPAddr, timeout time.Duration) (*UTPConn, err
 		readch: make(chan []byte, 100),
 		connch: make(chan error, 1),
 		finch:  make(chan int, 1),
+
+		keepalivech: make(chan time.Duration),
 
 		sendbuf: newPacketBuffer(window_size, 1),
 		closefunc: func() error {
@@ -239,6 +242,17 @@ func (c *UTPConn) SetWriteDeadline(t time.Time) error {
 	return nil
 }
 
+func (c *UTPConn) SetKeepAlive(d time.Duration) error {
+	if !c.ok() {
+		return syscall.EINVAL
+	}
+	state := c.getState()
+	if state.active {
+		c.keepalivech <- d
+	}
+	return nil
+}
+
 func readPacket(data []byte) (packet, error) {
 	var p packet
 	err := p.UnmarshalBinary(data)
@@ -271,6 +285,7 @@ func (c *UTPConn) recv() {
 func (c *UTPConn) loop() {
 	var recvExit, sendExit bool
 	var lastReceived time.Time
+	var keepalive <-chan time.Time
 	for {
 		select {
 		case p := <-c.recvch:
@@ -298,6 +313,14 @@ func (c *UTPConn) loop() {
 					c.resendPacket(p)
 				}
 			}
+		case d := <-c.keepalivech:
+			if d <= 0 {
+				keepalive = nil
+			} else {
+				keepalive = time.Tick(d)
+			}
+		case <-keepalive:
+			c.sendPacket(packetBase{st_state, 0, nil, 0})
 		}
 		if recvExit && sendExit {
 			return
