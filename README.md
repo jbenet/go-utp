@@ -20,16 +20,24 @@ go get github.com/h2so5/utp
 ## Example
 
 Echo server
+
 ```go
 package main
 
-import "github.com/h2so5/utp"
+import (
+	"time"
+
+	"github.com/h2so5/utp"
+)
 
 func main() {
 	ln, _ := utp.Listen("utp", ":11000")
 	defer ln.Close()
 
 	conn, _ := ln.AcceptUTP()
+	conn.SetKeepAlive(time.Minute)
+	defer conn.Close()
+	
 	for {
 		var buf [1024]byte
 		l, err := conn.Read(buf[:])
@@ -41,7 +49,5 @@ func main() {
 			break
 		}
 	}
-	conn.Close()
 }
-
 ```
