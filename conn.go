@@ -306,6 +306,7 @@ func (c *UTPConn) loop() {
 		case <-time.After(500 * time.Millisecond):
 			state := c.getState()
 			if !state.active && time.Now().Sub(lastReceived).Seconds() > 0.5 {
+				c.sendPacket(packetBase{st_reset, 0, nil, 0})
 				c.close()
 			} else {
 				p, err := c.sendbuf.first()
@@ -370,6 +371,8 @@ func (c *UTPConn) processPacket(p packet) {
 		if state.state != nil {
 			state.state(c, p)
 		}
+	} else if p.header.typ == st_reset {
+		c.close()
 	} else {
 		if c.recvbuf == nil {
 			return
@@ -391,10 +394,6 @@ func (c *UTPConn) processPacket(p packet) {
 				case st_state:
 					if state.state != nil {
 						state.state(c, p)
-					}
-				case st_reset:
-					if state.reset != nil {
-						state.reset(c, p)
 					}
 				}
 			}
@@ -462,7 +461,6 @@ type state struct {
 	data     func(c *UTPConn, p packet)
 	fin      func(c *UTPConn, p packet)
 	state    func(c *UTPConn, p packet)
-	reset    func(c *UTPConn, p packet)
 	exit     func(c *UTPConn)
 	active   bool
 	readable bool
