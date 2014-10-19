@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"io"
 	"io/ioutil"
+	"math"
 	mrand "math/rand"
 	"net"
 	"reflect"
@@ -312,14 +313,14 @@ func TestPacketBuffer(t *testing.T) {
 	}
 
 	for i := 1; i <= size; i++ {
-		b.push(packet{}, uint16(i))
+		b.push(packet{header: header{seq: uint16(i)}})
 	}
 
 	if b.space() != 0 {
 		t.Errorf("expected space == 0; got %d", b.space())
 	}
 
-	err := b.push(packet{}, 15)
+	err := b.push(packet{header: header{seq: 15}})
 	if err == nil {
 		t.Fatal("push should fail")
 	}
@@ -339,12 +340,12 @@ func TestPacketBuffer(t *testing.T) {
 		t.Errorf("expected 5 packets sequence; got %d", len(seq))
 	}
 
-	err = b.push(packet{}, 15)
+	err = b.push(packet{header: header{seq: 15}})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = b.push(packet{}, 17)
+	err = b.push(packet{header: header{seq: 17}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -364,6 +365,17 @@ func TestPacketBuffer(t *testing.T) {
 	b.compact()
 	if b.space() != 9 {
 		t.Errorf("expected space == 9; got %d", b.space())
+	}
+}
+
+func TestPacketBufferBoundary(t *testing.T) {
+	begin := math.MaxUint16 - 3
+	b := newPacketBuffer(12, begin)
+	for i := begin; i != 5; i = (i + 1) % (math.MaxUint16 + 1) {
+		err := b.push(packet{header: header{seq: uint16(i)}})
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 

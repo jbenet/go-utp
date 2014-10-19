@@ -342,7 +342,7 @@ func (c *UTPConn) sendPacket(b packetBase) {
 			return
 		}
 		if b.typ != st_state {
-			c.sendbuf.push(*p, p.header.seq)
+			c.sendbuf.push(*p)
 		}
 	}
 }
@@ -378,7 +378,7 @@ func (c *UTPConn) processPacket(p packet) {
 			return
 		}
 		c.sendch <- &packetBase{st_state, 0, nil, p.header.seq}
-		c.recvbuf.push(p, p.header.seq)
+		c.recvbuf.push(p)
 		for _, s := range c.recvbuf.sequence() {
 			if c.ack < s.header.seq {
 				c.ack = s.header.seq

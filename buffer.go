@@ -1,90 +1,106 @@
 package utp
 
-import "errors"
+import (
+	"errors"
+	"math"
+)
 
 type packetBuffer struct {
-	buf   []*packet
-	index int
+	root  *packetBufferNode
+	size  int
 	begin int
-	max   int
 }
 
-func newPacketBuffer(size, front int) *packetBuffer {
+type packetBufferNode struct {
+	p    *packet
+	next *packetBufferNode
+}
+
+func newPacketBuffer(size, begin int) *packetBuffer {
 	return &packetBuffer{
-		buf:   make([]*packet, size),
-		index: front,
-		begin: 0,
-		max:   front - 1,
+		size:  size,
+		begin: begin,
 	}
 }
 
-func (b *packetBuffer) push(p packet, id uint16) error {
-	if int(id) < b.index || int(id) >= b.index+len(b.buf) {
+func (b *packetBuffer) push(p packet) error {
+	if int(p.header.seq) > b.begin+b.size-1 {
 		return errors.New("out of bounds")
+	} else if int(p.header.seq) < b.begin {
+		if int(p.header.seq)+math.MaxUint16 > b.begin+b.size-1 {
+			return errors.New("out of bounds")
+		}
 	}
-	index := (int(id) - b.index + b.begin) % len(b.buf)
-	if b.buf[index] == nil {
-		b.buf[index] = &p
+	if b.root == nil {
+		b.root = &packetBufferNode{}
 	}
-	if b.max < int(id) {
-		b.max = int(id)
+	n := b.root
+	i := b.begin
+	for {
+		if i == int(p.header.seq) {
+			n.p = &p
+			return nil
+		} else if n.next == nil {
+			n.next = &packetBufferNode{}
+		}
+		n = n.next
+		i = (i + 1) % (math.MaxUint16 + 1)
 	}
 	return nil
 }
 
 func (b *packetBuffer) fetch(id uint16) (packet, error) {
-	index := (int(id) - b.index + b.begin) % len(b.buf)
-	if index < 0 || index >= len(b.buf) {
-		return packet{}, errors.New("not found")
+	for p := b.root; p != nil; p = p.next {
+		if p.p != nil && p.p.header.seq == id {
+			r := *p.p
+			p.p = nil
+			return r, nil
+		}
 	}
-	p := b.buf[index]
-	if p == nil {
-		return packet{}, errors.New("not found")
-	}
-	b.buf[index] = nil
-	return *p, nil
+	return packet{}, errors.New("not found")
 }
 
 func (b *packetBuffer) compact() {
-	for b.buf[b.begin] == nil && b.index <= b.max {
-		b.begin = (b.begin + 1) % len(b.buf)
-		b.index++
+	for b.root != nil && b.root.p == nil {
+		b.root = b.root.next
+		b.begin = (b.begin + 1) % (math.MaxUint16 + 1)
 	}
 }
 
 func (b *packetBuffer) all() []packet {
-	var p []packet
-	for i := b.index; i <= b.max; i++ {
-		index := (i - b.index + b.begin) % len(b.buf)
-		if b.buf[index] != nil {
-			p = append(p, *b.buf[index])
+	var a []packet
+	for p := b.root; p != nil; p = p.next {
+		if p.p != nil {
+			a = append(a, *p.p)
 		}
 	}
-	return p
+	return a
 }
 
 func (b *packetBuffer) first() (packet, error) {
-	if b.buf[b.begin] == nil {
+	if b.root == nil || b.root.p == nil {
 		return packet{}, errors.New("buffer is empty")
 	}
-	return *b.buf[b.begin], nil
+	return *b.root.p, nil
 }
 
 func (b *packetBuffer) sequence() []packet {
-	var p []packet
-	for b.buf[b.begin] != nil {
-		p = append(p, *b.buf[b.begin])
-		b.buf[b.begin] = nil
-		b.begin = (b.begin + 1) % len(b.buf)
-		b.index++
+	var a []packet
+	for ; b.root != nil && b.root.p != nil; b.root = b.root.next {
+		a = append(a, *b.root.p)
+		b.begin = (b.begin + 1) % (math.MaxUint16 + 1)
 	}
-	return p
+	return a
 }
 
 func (b *packetBuffer) space() int {
-	return len(b.buf) - (b.max - b.index) - 1
+	s := b.size
+	for p := b.root; p != nil; p = p.next {
+		s--
+	}
+	return s
 }
 
 func (b *packetBuffer) empty() bool {
-	return b.space() == len(b.buf)
+	return b.root == nil
 }
