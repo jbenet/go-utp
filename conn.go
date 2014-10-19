@@ -305,7 +305,7 @@ func (c *UTPConn) loop() {
 
 		case <-time.After(500 * time.Millisecond):
 			state := c.getState()
-			if !state.active && time.Now().Sub(lastReceived).Seconds() > 0.5 {
+			if !state.active && time.Now().Sub(lastReceived) > reset_timeout {
 				c.sendPacket(packetBase{st_reset, 0, nil, 0})
 				c.close()
 			} else {

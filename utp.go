@@ -1,5 +1,7 @@
 package utp
 
+import "time"
+
 const (
 	version = 1
 
@@ -16,6 +18,8 @@ const (
 	mtu         = 1400
 	mss         = mtu - header_size
 	window_size = 180
+
+	reset_timeout = time.Second
 )
 
 type timeoutError struct{}
