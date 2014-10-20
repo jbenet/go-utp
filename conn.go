@@ -308,11 +308,6 @@ func (c *UTPConn) loop() {
 			if !state.active && time.Now().Sub(lastReceived) > reset_timeout {
 				c.sendPacket(packetBase{st_reset, 0, nil, 0})
 				c.close()
-			} else {
-				p, err := c.sendbuf.first()
-				if err == nil {
-					c.resendPacket(p)
-				}
 			}
 		case d := <-c.keepalivech:
 			if d <= 0 {
@@ -510,8 +505,11 @@ var state_connected state = state{
 		}
 	},
 	state: func(c *UTPConn, p packet) {
-		c.sendbuf.fetch(p.header.ack)
-		c.sendbuf.compact()
+		for _, r := range c.sendbuf.all() {
+			if p.header.ack-r.header.ack >= 3 {
+				c.resendPacket(r)
+			}
+		}
 	},
 	exit: func(c *UTPConn) {
 		c.sendch <- &packetBase{st_fin, 0, nil, 0}
