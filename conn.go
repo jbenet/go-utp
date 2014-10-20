@@ -385,15 +385,15 @@ func (c *UTPConn) processPacket(p packet) {
 				switch s.header.typ {
 				case st_data:
 					if state.data != nil {
-						state.data(c, p)
+						state.data(c, s)
 					}
 				case st_fin:
 					if state.fin != nil {
-						state.fin(c, p)
+						state.fin(c, s)
 					}
 				case st_state:
 					if state.state != nil {
-						state.state(c, p)
+						state.state(c, s)
 					}
 				}
 			}
