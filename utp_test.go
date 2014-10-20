@@ -171,7 +171,7 @@ func TestLongReadWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var payload [200000]byte
+	var payload [10000]byte
 	_, err = rand.Read(payload[:])
 	if err != nil {
 		t.Fatal(err)
