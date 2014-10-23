@@ -15,6 +15,7 @@ type UTPConn struct {
 	conn                 *net.UDPConn
 	raddr                *net.UDPAddr
 	rid, sid, seq, ack   uint16
+	rtt, rttVar, rto     int
 	diff                 uint32
 	rdeadline, wdeadline time.Time
 
@@ -303,11 +304,16 @@ func (c *UTPConn) loop() {
 				sendExit = true
 			}
 
-		case <-time.After(500 * time.Millisecond):
+		case <-time.After(time.Duration(c.rto) * time.Millisecond):
 			state := c.getState()
 			if !state.active && time.Now().Sub(lastReceived) > reset_timeout {
 				c.sendPacket(packetBase{st_reset, 0, nil})
 				c.close()
+			} else {
+				p, err := c.sendbuf.first()
+				if err == nil {
+					c.resendPacket(p)
+				}
 			}
 		case d := <-c.keepalivech:
 			if d <= 0 {
@@ -349,16 +355,37 @@ func (c *UTPConn) resendPacket(p packet) {
 	}
 }
 
-func currentMillisecond() uint32 {
+func currentMicrosecond() uint32 {
 	return uint32(time.Now().Nanosecond() / 1000)
 }
 
 func (c *UTPConn) processPacket(p packet) {
-	c.diff = currentMillisecond() - p.header.t
+	c.diff = currentMicrosecond() - p.header.t
 
 	state := c.getState()
 	if p.header.typ == st_state {
-		c.sendbuf.fetch(p.header.ack)
+		s, err := c.sendbuf.fetch(p.header.ack)
+		if err == nil {
+			current := currentMicrosecond()
+			if current > s.header.t {
+				e := int(current-s.header.t) / 1000
+				if c.rtt == 0 {
+					c.rtt = e
+					c.rttVar = e / 2
+				} else {
+					d := c.rtt - e
+					if d < 0 {
+						d = -d
+					}
+					c.rttVar += (d - c.rttVar) / 4
+					c.rtt = c.rtt - c.rtt/8 + e/8
+				}
+				c.rto = c.rtt + c.rttVar*4
+				if c.rto < 500 {
+					c.rto = 500
+				}
+			}
+		}
 		c.sendbuf.compact()
 		if state.state != nil {
 			state.state(c, p)
@@ -407,7 +434,7 @@ func (c *UTPConn) makePacket(b packetBase, ack uint16) *packet {
 		ver:  version,
 		ext:  b.ext,
 		id:   id,
-		t:    currentMillisecond(),
+		t:    currentMicrosecond(),
 		diff: c.diff,
 		wnd:  uint32(wnd),
 		seq:  c.seq,
@@ -438,7 +465,7 @@ func (c *UTPConn) close() {
 	state := c.getState()
 	if !state.closed {
 		c.recvch <- nil
-		close(c.sendch)
+		c.sendch <- nil
 		close(c.readch)
 		close(c.finch)
 		c.setState(state_closed)

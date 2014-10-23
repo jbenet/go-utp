@@ -83,7 +83,7 @@ func (l *UTPListener) processPacket(p packet, addr *net.UDPAddr) {
 				sid:   p.header.id,
 				seq:   uint16(seq),
 				ack:   p.header.seq,
-				diff:  currentMillisecond() - p.header.t,
+				diff:  currentMicrosecond() - p.header.t,
 				state: state_connected,
 
 				sendch: make(chan *packetBase, 10),
