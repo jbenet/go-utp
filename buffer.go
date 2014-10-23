@@ -51,10 +51,14 @@ func (b *packetBuffer) push(p packet) error {
 
 func (b *packetBuffer) fetch(id uint16) (packet, error) {
 	for p := b.root; p != nil; p = p.next {
-		if p.p != nil && p.p.header.seq == id {
-			r := *p.p
-			p.p = nil
-			return r, nil
+		if p.p != nil {
+			if p.p.header.seq < id {
+				p.p = nil
+			} else if p.p.header.seq == id {
+				r := *p.p
+				p.p = nil
+				return r, nil
+			}
 		}
 	}
 	return packet{}, errors.New("not found")

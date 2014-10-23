@@ -12,12 +12,12 @@ import (
 )
 
 type UTPConn struct {
-	conn                 *net.UDPConn
-	raddr                *net.UDPAddr
-	rid, sid, seq, ack   uint16
-	rtt, rttVar, rto     int
-	diff                 uint32
-	rdeadline, wdeadline time.Time
+	conn                        *net.UDPConn
+	raddr                       *net.UDPAddr
+	rid, sid, seq, ack, lastAck uint16
+	rtt, rttVar, rto, dupAck    int
+	diff                        uint32
+	rdeadline, wdeadline        time.Time
 
 	state      state
 	stateMutex sync.RWMutex
@@ -386,6 +386,19 @@ func (c *UTPConn) processPacket(p packet) {
 			}
 		}
 		c.sendbuf.compact()
+		if c.lastAck == p.header.ack {
+			c.dupAck++
+			if c.dupAck >= 2 {
+				p, err := c.sendbuf.first()
+				if err == nil {
+					c.resendPacket(p)
+				}
+				c.dupAck = 0
+			}
+		} else {
+			c.dupAck = 0
+		}
+		c.lastAck = p.header.ack
 		if state.state != nil {
 			state.state(c, p)
 		}
@@ -524,13 +537,6 @@ var state_connected state = state{
 			c.close()
 		} else {
 			c.closing()
-		}
-	},
-	state: func(c *UTPConn, p packet) {
-		for _, r := range c.sendbuf.all() {
-			if p.header.ack-r.header.ack >= 3 {
-				c.resendPacket(r)
-			}
 		}
 	},
 	exit: func(c *UTPConn) {
