@@ -18,6 +18,7 @@ func TestUcatListen(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	time.Sleep(500 * time.Millisecond)
 	addr, err := utp.ResolveUTPAddr("utp", "127.0.0.1:8000")
 	c, err := utp.DialUTPTimeout("utp", nil, addr, 1000*time.Millisecond)
 	if err != nil {
