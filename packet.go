@@ -19,7 +19,7 @@ type packet struct {
 	payload []byte
 }
 
-type packetBase struct {
+type outgoingPacket struct {
 	typ, ext int
 	payload  []byte
 }

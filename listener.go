@@ -86,7 +86,7 @@ func (l *UTPListener) processPacket(p packet, addr *net.UDPAddr) {
 				diff:  currentMicrosecond() - p.header.t,
 				state: state_connected,
 
-				sendch: make(chan *packetBase, 10),
+				sendch: make(chan *outgoingPacket, 10),
 				recvch: make(chan *packet, 2),
 
 				readch: make(chan []byte, 100),
