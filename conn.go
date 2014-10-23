@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"math"
 	"math/rand"
 	"net"
 	"sync"
@@ -72,7 +73,7 @@ func dial(n string, laddr, raddr *UTPAddr, timeout time.Duration) (*UTPConn, err
 		return nil, err
 	}
 
-	id := uint16(rand.Intn(65535))
+	id := uint16(rand.Intn(math.MaxUint16))
 	c := UTPConn{
 		conn:  conn,
 		raddr: raddr.addr,
