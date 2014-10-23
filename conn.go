@@ -331,8 +331,7 @@ func (c *UTPConn) loop() {
 }
 
 func (c *UTPConn) sendPacket(b packetBase) {
-	ack := c.ack
-	p := c.makePacket(b, ack)
+	p := c.makePacket(b)
 	bin, err := p.MarshalBinary()
 	if err == nil {
 		_, err = c.conn.WriteToUDP(bin, c.raddr)
@@ -420,7 +419,7 @@ func (c *UTPConn) processPacket(p packet) {
 	}
 }
 
-func (c *UTPConn) makePacket(b packetBase, ack uint16) *packet {
+func (c *UTPConn) makePacket(b packetBase) *packet {
 	wnd := window_size * mtu
 	if c.recvbuf != nil {
 		wnd = c.recvbuf.space() * mtu
@@ -438,7 +437,7 @@ func (c *UTPConn) makePacket(b packetBase, ack uint16) *packet {
 		diff: c.diff,
 		wnd:  uint32(wnd),
 		seq:  c.seq,
-		ack:  ack,
+		ack:  c.ack,
 	}
 	if b.typ == st_fin {
 		c.eofid = c.seq
