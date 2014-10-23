@@ -262,7 +262,6 @@ func TestPacketBinary(t *testing.T) {
 	h := header{
 		typ:  st_fin,
 		ver:  version,
-		ext:  ext_selective_ack,
 		id:   100,
 		t:    50000,
 		diff: 10000,
@@ -271,8 +270,20 @@ func TestPacketBinary(t *testing.T) {
 		ack:  200,
 	}
 
+	e := []extension{
+		extension{
+			typ:     ext_selective_ack,
+			payload: []byte{0, 1, 0, 1},
+		},
+		extension{
+			typ:     ext_selective_ack,
+			payload: []byte{100, 0, 200, 0},
+		},
+	}
+
 	p := packet{
 		header:  h,
+		ext:     e,
 		payload: []byte("abcdefg"),
 	}
 

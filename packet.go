@@ -4,32 +4,47 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"io/ioutil"
 )
 
 type header struct {
-	typ, ver, ext int
-	id            uint16
-	t, diff, wnd  uint32
-	seq, ack      uint16
+	typ, ver     int
+	id           uint16
+	t, diff, wnd uint32
+	seq, ack     uint16
+}
+
+type extension struct {
+	typ     int
+	payload []byte
 }
 
 type packet struct {
 	header  header
+	ext     []extension
 	payload []byte
 }
 
 type outgoingPacket struct {
-	typ, ext int
-	payload  []byte
+	typ     int
+	ext     []extension
+	payload []byte
 }
 
 func (p *packet) MarshalBinary() ([]byte, error) {
-	var data = []interface{}{
+	firstExt := ext_none
+	if len(p.ext) > 0 {
+		firstExt = p.ext[0].typ
+	}
+	buf := new(bytes.Buffer)
+	var beforeExt = []interface{}{
 		// | type  | ver   |
 		uint8(((byte(p.header.typ) << 4) & 0xF0) | (byte(p.header.ver) & 0xF)),
 		// | extension     |
-		uint8(p.header.ext),
+		uint8(firstExt),
+	}
+	var afterExt = []interface{}{
 		// | connection_id                 |
 		uint16(p.header.id),
 		// | timestamp_microseconds                                        |
@@ -43,13 +58,46 @@ func (p *packet) MarshalBinary() ([]byte, error) {
 		// | ack_nr                        |
 		uint16(p.header.ack),
 	}
-	buf := new(bytes.Buffer)
-	for _, v := range data {
+
+	for _, v := range beforeExt {
 		err := binary.Write(buf, binary.BigEndian, v)
 		if err != nil {
 			return nil, err
 		}
 	}
+
+	if len(p.ext) > 0 {
+		for i, e := range p.ext {
+			next := ext_none
+			if i < len(p.ext)-1 {
+				next = p.ext[i+1].typ
+			}
+			var ext = []interface{}{
+				// | extension     |
+				uint8(next),
+				// | len           |
+				uint8(len(e.payload)),
+			}
+			for _, v := range ext {
+				err := binary.Write(buf, binary.BigEndian, v)
+				if err != nil {
+					return nil, err
+				}
+			}
+			_, err := buf.Write(e.payload)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	for _, v := range afterExt {
+		err := binary.Write(buf, binary.BigEndian, v)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	_, err := buf.Write(p.payload)
 	if err != nil {
 		return nil, err
@@ -58,13 +106,50 @@ func (p *packet) MarshalBinary() ([]byte, error) {
 }
 
 func (p *packet) UnmarshalBinary(data []byte) error {
+	p.ext = nil
 	buf := bytes.NewReader(data)
-	var tv, ext uint8
-	var d = []interface{}{
+	var tv, e uint8
+
+	var beforeExt = []interface{}{
 		// | type  | ver   |
 		(*uint8)(&tv),
 		// | extension     |
-		(*uint8)(&ext),
+		(*uint8)(&e),
+	}
+	for _, v := range beforeExt {
+		err := binary.Read(buf, binary.BigEndian, v)
+		if err != nil {
+			return err
+		}
+	}
+
+	for e != ext_none {
+		currentExt := int(e)
+		var l uint8
+		var ext = []interface{}{
+			// | extension     |
+			(*uint8)(&e),
+			// | len           |
+			(*uint8)(&l),
+		}
+		for _, v := range ext {
+			err := binary.Read(buf, binary.BigEndian, v)
+			if err != nil {
+				return err
+			}
+		}
+		payload := make([]byte, l)
+		size, err := buf.Read(payload[:])
+		if err != nil {
+			return err
+		}
+		if size != len(payload) {
+			return io.EOF
+		}
+		p.ext = append(p.ext, extension{typ: currentExt, payload: payload})
+	}
+
+	var afterExt = []interface{}{
 		// | connection_id                 |
 		(*uint16)(&p.header.id),
 		// | timestamp_microseconds                                        |
@@ -78,15 +163,15 @@ func (p *packet) UnmarshalBinary(data []byte) error {
 		// | ack_nr                        |
 		(*uint16)(&p.header.ack),
 	}
-	for _, v := range d {
+	for _, v := range afterExt {
 		err := binary.Read(buf, binary.BigEndian, v)
 		if err != nil {
 			return err
 		}
 	}
+
 	p.header.typ = int((tv >> 4) & 0xF)
 	p.header.ver = int(tv & 0xF)
-	p.header.ext = int(ext)
 	b, err := ioutil.ReadAll(buf)
 	if err != nil {
 		return err
