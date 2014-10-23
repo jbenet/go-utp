@@ -22,7 +22,6 @@ type packet struct {
 type packetBase struct {
 	typ, ext int
 	payload  []byte
-	ack      uint16
 }
 
 func (p *packet) MarshalBinary() ([]byte, error) {

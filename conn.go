@@ -100,7 +100,7 @@ func dial(n string, laddr, raddr *UTPAddr, timeout time.Duration) (*UTPConn, err
 	go c.recv()
 	go c.loop()
 
-	c.sendch <- &packetBase{st_syn, 0, nil, 0}
+	c.sendch <- &packetBase{st_syn, 0, nil}
 
 	var t <-chan time.Time
 	if timeout != 0 {
@@ -205,7 +205,7 @@ func (c *UTPConn) Write(b []byte) (int, error) {
 		if err != nil {
 			break
 		}
-		c.sendch <- &packetBase{st_data, 0, payload[:l], 0}
+		c.sendch <- &packetBase{st_data, 0, payload[:l]}
 		if l < mss {
 			break
 		}
@@ -306,7 +306,7 @@ func (c *UTPConn) loop() {
 		case <-time.After(500 * time.Millisecond):
 			state := c.getState()
 			if !state.active && time.Now().Sub(lastReceived) > reset_timeout {
-				c.sendPacket(packetBase{st_reset, 0, nil, 0})
+				c.sendPacket(packetBase{st_reset, 0, nil})
 				c.close()
 			}
 		case d := <-c.keepalivech:
@@ -316,7 +316,7 @@ func (c *UTPConn) loop() {
 				keepalive = time.Tick(d)
 			}
 		case <-keepalive:
-			c.sendPacket(packetBase{st_state, 0, nil, 0})
+			c.sendPacket(packetBase{st_state, 0, nil})
 		}
 		if recvExit && sendExit {
 			return
@@ -326,9 +326,6 @@ func (c *UTPConn) loop() {
 
 func (c *UTPConn) sendPacket(b packetBase) {
 	ack := c.ack
-	if b.ack != 0 {
-		ack = b.ack
-	}
 	p := c.makePacket(b, ack)
 	bin, err := p.MarshalBinary()
 	if err == nil {
@@ -372,7 +369,7 @@ func (c *UTPConn) processPacket(p packet) {
 		if c.recvbuf == nil {
 			return
 		}
-		c.sendch <- &packetBase{st_state, 0, nil, p.header.seq}
+		c.sendch <- &packetBase{st_state, 0, nil}
 		c.recvbuf.push(p)
 		for _, s := range c.recvbuf.sequence() {
 			if c.ack < s.header.seq {
@@ -512,7 +509,7 @@ var state_connected state = state{
 		}
 	},
 	exit: func(c *UTPConn) {
-		c.sendch <- &packetBase{st_fin, 0, nil, 0}
+		c.sendch <- &packetBase{st_fin, 0, nil}
 		c.setState(state_fin_sent)
 	},
 	active:   true,
