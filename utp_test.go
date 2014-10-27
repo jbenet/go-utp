@@ -188,7 +188,7 @@ func TestLongReadWrite(t *testing.T) {
 
 	go func() {
 		defer c.Close()
-		_, err = c.Write(payload[:])
+		_, err := c.Write(payload[:])
 		if err != nil {
 			ech <- err
 		}
