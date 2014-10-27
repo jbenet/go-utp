@@ -17,7 +17,7 @@ const (
 	header_size = 20
 	mtu         = 1400
 	mss         = mtu - header_size
-	window_size = 100
+	window_size = 20
 
 	reset_timeout = time.Second
 )

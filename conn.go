@@ -17,7 +17,7 @@ type UTPConn struct {
 	raddr                       *net.UDPAddr
 	rid, sid, seq, ack, lastAck uint16
 	rtt, rttVar, rto, dupAck    int
-	diff                        uint32
+	diff, maxWindow             uint32
 	rdeadline, wdeadline        time.Time
 
 	state      state
@@ -77,15 +77,16 @@ func dial(n string, laddr, raddr *UTPAddr, timeout time.Duration) (*UTPConn, err
 
 	id := uint16(rand.Intn(math.MaxUint16))
 	c := UTPConn{
-		conn:  conn,
-		raddr: raddr.addr,
-		rid:   id,
-		sid:   id + 1,
-		seq:   1,
-		ack:   0,
-		diff:  0,
-		rto:   1000,
-		state: state_syn_sent,
+		conn:      conn,
+		raddr:     raddr.addr,
+		rid:       id,
+		sid:       id + 1,
+		seq:       1,
+		ack:       0,
+		diff:      0,
+		maxWindow: window_size * mtu,
+		rto:       1000,
+		state:     state_syn_sent,
 
 		outch:  make(chan *outgoingPacket, 10),
 		sendch: make(chan *outgoingPacket, 10),
@@ -341,6 +342,7 @@ func (c *UTPConn) loop() {
 			} else {
 				p, err := c.sendbuf.first()
 				if err == nil {
+					c.maxWindow /= 2
 					c.resendPacket(p)
 				}
 			}
@@ -420,6 +422,7 @@ func (c *UTPConn) processPacket(p packet) {
 			if c.dupAck >= 2 {
 				p, err := c.sendbuf.first()
 				if err == nil {
+					c.maxWindow /= 2
 					c.resendPacket(p)
 				}
 				c.dupAck = 0
@@ -429,7 +432,14 @@ func (c *UTPConn) processPacket(p packet) {
 		}
 		c.lastAck = p.header.ack
 		if p.header.ack >= c.seq-1 {
-			c.winch <- p.header.wnd
+			wnd := p.header.wnd
+			if c.maxWindow < mtu {
+				c.maxWindow = mtu
+			}
+			if wnd > c.maxWindow {
+				wnd = c.maxWindow
+			}
+			c.winch <- wnd
 		}
 		if state.state != nil {
 			state.state(c, p)
@@ -572,7 +582,7 @@ var state_connected state = state{
 		}
 	},
 	exit: func(c *UTPConn) {
-		c.sendch <- &outgoingPacket{st_fin, nil, nil}
+		c.outch <- &outgoingPacket{st_fin, nil, nil}
 		c.setState(state_fin_sent)
 	},
 	active:   true,
