@@ -170,6 +170,7 @@ func TestLongReadWrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer s.Close()
 
 	var payload [1048576]byte
 	_, err = rand.Read(payload[:])
@@ -177,12 +178,11 @@ func TestLongReadWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = s.SetDeadline(time.Now().Add(1000 * time.Millisecond))
+	err = s.SetDeadline(time.Now().Add(10000 * time.Millisecond))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	wch := make(chan int)
 	rch := make(chan []byte)
 
 	go func() {
@@ -191,7 +191,6 @@ func TestLongReadWrite(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		wch <- 0
 	}()
 
 	go func() {
@@ -203,7 +202,6 @@ func TestLongReadWrite(t *testing.T) {
 		rch <- b
 	}()
 
-	<-wch
 	r := <-rch
 	if r == nil {
 		return
