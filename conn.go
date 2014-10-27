@@ -23,8 +23,10 @@ type UTPConn struct {
 	state      state
 	stateMutex sync.RWMutex
 
+	outch  chan *outgoingPacket
 	sendch chan *outgoingPacket
 	recvch chan *packet
+	winch  chan uint32
 
 	readch      chan []byte
 	connch      chan error
@@ -82,14 +84,17 @@ func dial(n string, laddr, raddr *UTPAddr, timeout time.Duration) (*UTPConn, err
 		seq:   1,
 		ack:   0,
 		diff:  0,
+		rto:   1000,
 		state: state_syn_sent,
 
+		outch:  make(chan *outgoingPacket, 10),
 		sendch: make(chan *outgoingPacket, 10),
 		recvch: make(chan *packet, 2),
 
 		readch: make(chan []byte, 100),
 		connch: make(chan error, 1),
 		finch:  make(chan int, 1),
+		winch:  make(chan uint32),
 
 		keepalivech: make(chan time.Duration),
 
@@ -207,7 +212,7 @@ func (c *UTPConn) Write(b []byte) (int, error) {
 		if err != nil {
 			break
 		}
-		c.sendch <- &outgoingPacket{st_data, nil, payload[:l]}
+		c.outch <- &outgoingPacket{st_data, nil, payload[:l]}
 		if l < mss {
 			break
 		}
@@ -288,6 +293,29 @@ func (c *UTPConn) loop() {
 	var recvExit, sendExit bool
 	var lastReceived time.Time
 	var keepalive <-chan time.Time
+
+	go func() {
+		var window int64 = window_size * mtu
+		for {
+			if window > 0 {
+				select {
+				case b := <-c.outch:
+					if b != nil {
+						c.sendch <- b
+						window -= int64(len(b.payload) + header_size)
+					} else {
+						c.sendch <- nil
+						return
+					}
+				case w := <-c.winch:
+					window = int64(w)
+				}
+			} else {
+				window = int64(<-c.winch)
+			}
+		}
+	}()
+
 	for {
 		select {
 		case p := <-c.recvch:
@@ -400,6 +428,9 @@ func (c *UTPConn) processPacket(p packet) {
 			c.dupAck = 0
 		}
 		c.lastAck = p.header.ack
+		if p.header.ack >= c.seq-1 {
+			c.winch <- p.header.wnd
+		}
 		if state.state != nil {
 			state.state(c, p)
 		}
@@ -477,7 +508,7 @@ func (c *UTPConn) close() {
 	state := c.getState()
 	if !state.closed {
 		c.recvch <- nil
-		c.sendch <- nil
+		c.outch <- nil
 		close(c.readch)
 		close(c.finch)
 		c.setState(state_closed)

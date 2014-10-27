@@ -84,10 +84,13 @@ func (l *UTPListener) processPacket(p packet, addr *net.UDPAddr) {
 				seq:   uint16(seq),
 				ack:   p.header.seq,
 				diff:  currentMicrosecond() - p.header.t,
+				rto:   1000,
 				state: state_connected,
 
+				outch:  make(chan *outgoingPacket, 10),
 				sendch: make(chan *outgoingPacket, 10),
 				recvch: make(chan *packet, 2),
+				winch:  make(chan uint32),
 
 				readch: make(chan []byte, 100),
 				finch:  make(chan int, 1),

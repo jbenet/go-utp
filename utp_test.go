@@ -171,12 +171,8 @@ func TestLongReadWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var payload [10000]byte
+	var payload [1048576]byte
 	_, err = rand.Read(payload[:])
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = c.Write(payload[:])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,20 +182,29 @@ func TestLongReadWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ch := make(chan []byte)
+	wch := make(chan int)
+	rch := make(chan []byte)
+
+	go func() {
+		defer c.Close()
+		_, err = c.Write(payload[:])
+		if err != nil {
+			t.Fatal(err)
+		}
+		wch <- 0
+	}()
 
 	go func() {
 		b, err := ioutil.ReadAll(s)
 		if err != nil {
-			ch <- nil
+			rch <- nil
 			t.Fatal(err)
 		}
-		ch <- b
+		rch <- b
 	}()
 
-	c.Close()
-
-	r := <-ch
+	<-wch
+	r := <-rch
 	if r == nil {
 		return
 	}
