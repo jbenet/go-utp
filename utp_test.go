@@ -184,23 +184,31 @@ func TestLongReadWrite(t *testing.T) {
 	}
 
 	rch := make(chan []byte)
+	ech := make(chan error, 2)
 
 	go func() {
 		defer c.Close()
 		_, err = c.Write(payload[:])
 		if err != nil {
-			t.Fatal(err)
+			ech <- err
 		}
 	}()
 
 	go func() {
 		b, err := ioutil.ReadAll(s)
 		if err != nil {
+			ech <- err
 			rch <- nil
-			t.Fatal(err)
+		} else {
+			ech <- nil
+			rch <- b
 		}
-		rch <- b
 	}()
+
+	err = <-ech
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	r := <-rch
 	if r == nil {
