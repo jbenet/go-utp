@@ -77,16 +77,15 @@ func (l *UTPListener) processPacket(p packet, addr *net.UDPAddr) {
 		if !l.conns.contains(sid) {
 			seq := rand.Intn(math.MaxUint16)
 			c := UTPConn{
-				conn:      l.conn,
-				raddr:     addr,
-				rid:       p.header.id + 1,
-				sid:       p.header.id,
-				seq:       uint16(seq),
-				ack:       p.header.seq,
-				diff:      currentMicrosecond() - p.header.t,
-				maxWindow: window_size * mtu,
-				rto:       1000,
-				state:     state_connected,
+				conn:  l.conn,
+				raddr: addr,
+				rid:   p.header.id + 1,
+				sid:   p.header.id,
+				seq:   uint16(seq),
+				ack:   p.header.seq,
+				diff:  currentMicrosecond() - p.header.t,
+				rto:   1000,
+				state: state_connected,
 
 				outch:  make(chan *outgoingPacket, 10),
 				sendch: make(chan *outgoingPacket, 10),
