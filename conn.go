@@ -480,6 +480,7 @@ func (c *UTPConn) processPacket(p packet) {
 		c.recvbuf.push(p)
 		for _, s := range c.recvbuf.sequence() {
 			if c.ack < s.header.seq {
+				state := c.getState()
 				c.ack = s.header.seq
 				switch s.header.typ {
 				case st_data:
@@ -543,8 +544,8 @@ func (c *UTPConn) getState() state {
 func (c *UTPConn) close() {
 	state := c.getState()
 	if !state.closed {
-		c.recvch <- nil
-		c.outch <- nil
+		close(c.recvch)
+		close(c.outch)
 		close(c.readch)
 		close(c.finch)
 		c.setState(state_closed)
