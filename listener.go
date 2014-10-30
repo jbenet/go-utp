@@ -84,7 +84,7 @@ func (l *UTPListener) processPacket(p packet, addr *net.UDPAddr) {
 				seq:       uint16(seq),
 				ack:       p.header.seq,
 				diff:      currentMicrosecond() - p.header.t,
-				maxWindow: window_size * mtu,
+				maxWindow: mtu,
 				rto:       1000,
 				state:     state_connected,
 

@@ -84,7 +84,7 @@ func dial(n string, laddr, raddr *UTPAddr, timeout time.Duration) (*UTPConn, err
 		seq:       1,
 		ack:       0,
 		diff:      0,
-		maxWindow: window_size * mtu,
+		maxWindow: mtu,
 		rto:       1000,
 		state:     state_syn_sent,
 
@@ -296,23 +296,23 @@ func (c *UTPConn) loop() {
 	var keepalive <-chan time.Time
 
 	go func() {
-		var window int64 = window_size * mtu
+		var window uint32 = window_size * mtu
 		for {
-			if window > 0 {
+			if window >= mtu {
 				select {
 				case b := <-c.outch:
 					if b != nil {
 						c.sendch <- b
-						window -= int64(len(b.payload) + header_size)
+						window -= mtu
 					} else {
 						c.sendch <- nil
 						return
 					}
 				case w := <-c.winch:
-					window = int64(w)
+					window = w
 				}
 			} else {
-				window = int64(<-c.winch)
+				window = <-c.winch
 			}
 		}
 	}()
@@ -343,6 +343,9 @@ func (c *UTPConn) loop() {
 				p, err := c.sendbuf.first()
 				if err == nil {
 					c.maxWindow /= 2
+					if c.maxWindow < mtu {
+						c.maxWindow = mtu
+					}
 					c.resendPacket(p)
 				}
 			}
@@ -423,6 +426,9 @@ func (c *UTPConn) processPacket(p packet) {
 				p, err := c.sendbuf.first()
 				if err == nil {
 					c.maxWindow /= 2
+					if c.maxWindow < mtu {
+						c.maxWindow = mtu
+					}
 					c.resendPacket(p)
 				}
 				c.dupAck = 0
@@ -433,9 +439,6 @@ func (c *UTPConn) processPacket(p packet) {
 		c.lastAck = p.header.ack
 		if p.header.ack >= c.seq-1 {
 			wnd := p.header.wnd
-			if c.maxWindow < mtu {
-				c.maxWindow = mtu
-			}
 			if wnd > c.maxWindow {
 				wnd = c.maxWindow
 			}
