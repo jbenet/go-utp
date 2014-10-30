@@ -13,12 +13,12 @@ import (
 )
 
 type UTPConn struct {
-	conn                        *net.UDPConn
-	raddr                       *net.UDPAddr
-	rid, sid, seq, ack, lastAck uint16
-	rtt, rttVar, rto, dupAck    int
-	diff, maxWindow             uint32
-	rdeadline, wdeadline        time.Time
+	conn                             *net.UDPConn
+	raddr                            *net.UDPAddr
+	rid, sid, seq, ack, lastAck      uint16
+	rtt, rttVar, minRtt, rto, dupAck int
+	diff, maxWindow                  uint32
+	rdeadline, wdeadline             time.Time
 
 	state      state
 	stateMutex sync.RWMutex
@@ -83,6 +83,7 @@ func dial(n string, laddr, raddr *UTPAddr, timeout time.Duration) (*UTPConn, err
 		sid:       id + 1,
 		seq:       1,
 		ack:       0,
+		minRtt:    math.MaxInt64,
 		diff:      0,
 		maxWindow: mtu,
 		rto:       1000,
@@ -393,7 +394,17 @@ func currentMicrosecond() uint32 {
 }
 
 func (c *UTPConn) processPacket(p packet) {
-	c.diff = currentMicrosecond() - p.header.t
+	if p.header.t == 0 {
+		c.diff = 0
+	} else {
+		t := currentMicrosecond()
+		if t > p.header.t {
+			c.diff = t - p.header.t
+			if c.minRtt > int(c.diff) {
+				c.minRtt = int(c.diff)
+			}
+		}
+	}
 
 	state := c.getState()
 	if p.header.typ == st_state {
@@ -416,6 +427,18 @@ func (c *UTPConn) processPacket(p packet) {
 				c.rto = c.rtt + c.rttVar*4
 				if c.rto < 500 {
 					c.rto = 500
+				}
+			}
+
+			if c.diff != 0 {
+				ourDelay := float64(c.diff)
+				offTarget := 100000.0 - ourDelay
+				windowFactor := float64(mtu) / float64(c.maxWindow)
+				delayFactor := offTarget / 100000.0
+				gain := 3000.0 * delayFactor * windowFactor
+				c.maxWindow = uint32(int(c.maxWindow) + int(gain))
+				if c.maxWindow < mtu {
+					c.maxWindow = mtu
 				}
 			}
 		}

@@ -83,6 +83,7 @@ func (l *UTPListener) processPacket(p packet, addr *net.UDPAddr) {
 				sid:       p.header.id,
 				seq:       uint16(seq),
 				ack:       p.header.seq,
+				minRtt:    math.MaxInt64,
 				diff:      currentMicrosecond() - p.header.t,
 				maxWindow: mtu,
 				rto:       1000,
