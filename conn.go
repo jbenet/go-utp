@@ -544,7 +544,7 @@ func (c *UTPConn) getState() state {
 func (c *UTPConn) close() {
 	state := c.getState()
 	if !state.closed {
-		close(c.recvch)
+		c.recvch <- nil
 		close(c.outch)
 		close(c.readch)
 		close(c.finch)
