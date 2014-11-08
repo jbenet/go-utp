@@ -20,7 +20,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	utp "github.com/jbenet/go-utp"
+	utp "github.com/h2so5/utp"
 )
 
 var verbose = false
