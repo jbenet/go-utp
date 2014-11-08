@@ -272,6 +272,81 @@ func TestAcceptClosedListener(t *testing.T) {
 	}
 }
 
+func TestDialer(t *testing.T) {
+	ln, err := Listen("utp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+
+	d := Dialer{}
+	c, err := d.Dial("utp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+}
+
+func TestDialerAddrs(t *testing.T) {
+	ln, err := Listen("utp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+
+	laddr, err := ResolveUTPAddr("utp", "127.0.0.1:45678")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	d := Dialer{LocalAddr: laddr}
+	c1, err := d.Dial("utp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c1.Close()
+
+	c2, err := ln.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c2.Close()
+
+	eq := func(a, b net.Addr) bool {
+		return a.String() == b.String()
+	}
+
+	if !eq(d.LocalAddr, c2.RemoteAddr()) {
+		t.Fatal("dialer.LocalAddr not equal to c2.RemoteAddr ")
+	}
+	if !eq(c1.LocalAddr(), c2.RemoteAddr()) {
+		t.Fatal("c1.LocalAddr not equal to c2.RemoteAddr ")
+	}
+	if !eq(c2.LocalAddr(), c1.RemoteAddr()) {
+		t.Fatal("c2.LocalAddr not equal to c1.RemoteAddr ")
+	}
+}
+
+func TestDialerTimeout(t *testing.T) {
+	timeout := time.Millisecond * 200
+	d := Dialer{Timeout: timeout}
+	done := make(chan struct{})
+
+	go func() {
+		_, err := d.Dial("utp", "127.0.0.1:34567")
+		if err == nil {
+			t.Fatal("should not connect")
+		}
+		done <- struct{}{}
+	}()
+
+	select {
+	case <-time.After(timeout * 2):
+		t.Fatal("should have ended already")
+	case <-done:
+	}
+}
+
 func TestPacketBinary(t *testing.T) {
 	h := header{
 		typ:  st_fin,
