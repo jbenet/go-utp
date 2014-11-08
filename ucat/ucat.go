@@ -135,9 +135,13 @@ func Listen(localAddr string) error {
 // If localAddr is set, uses it to Dial from.
 func Dial(localAddr, remoteAddr string) error {
 
-	laddr, err := utp.ResolveUTPAddr("utp", localAddr)
-	if err != nil {
-		return fmt.Errorf("failed to resolve address %s", localAddr)
+	var laddr net.Addr
+	var err error
+	if localAddr != "" {
+		laddr, err = utp.ResolveUTPAddr("utp", localAddr)
+		if err != nil {
+			return fmt.Errorf("failed to resolve address %s", localAddr)
+		}
 	}
 
 	if laddr != nil {
@@ -162,15 +166,16 @@ func netcat(c net.Conn) {
 
 	done := make(chan struct{})
 
-	// c.Write([]byte("---"))
-	cat := func(w io.Writer, r io.Reader) {
-		io.Copy(w, r)
+	go func() {
+		n, _ := io.Copy(c, os.Stdin)
+		log("sent %d bytes", n)
 		done <- struct{}{}
-	}
-
-	_ = cat
-	go cat(c, os.Stdin)
-	go cat(os.Stdout, c)
+	}()
+	go func() {
+		n, _ := io.Copy(os.Stdout, c)
+		log("received %d bytes", n)
+		done <- struct{}{}
+	}()
 
 	// wait until we exit.
 	sigc := make(chan os.Signal, 1)
