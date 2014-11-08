@@ -445,7 +445,7 @@ func (c *UTPConn) processPacket(p packet) {
 			c.dupAck = 0
 		}
 		c.lastAck = p.header.ack
-		if p.header.ack >= c.seq-1 {
+		if p.header.ack == c.seq-1 {
 			wnd := p.header.wnd
 			if wnd > c.maxWindow {
 				wnd = c.maxWindow
@@ -464,22 +464,20 @@ func (c *UTPConn) processPacket(p packet) {
 		c.sendch <- &outgoingPacket{st_state, nil, nil}
 		c.recvbuf.push(p)
 		for _, s := range c.recvbuf.sequence() {
-			if c.ack < s.header.seq {
-				state := c.getState()
-				c.ack = s.header.seq
-				switch s.header.typ {
-				case st_data:
-					if state.data != nil {
-						state.data(c, s)
-					}
-				case st_fin:
-					if state.fin != nil {
-						state.fin(c, s)
-					}
-				case st_state:
-					if state.state != nil {
-						state.state(c, s)
-					}
+			state := c.getState()
+			c.ack = s.header.seq
+			switch s.header.typ {
+			case st_data:
+				if state.data != nil {
+					state.data(c, s)
+				}
+			case st_fin:
+				if state.fin != nil {
+					state.fin(c, s)
+				}
+			case st_state:
+				if state.state != nil {
+					state.state(c, s)
 				}
 			}
 		}

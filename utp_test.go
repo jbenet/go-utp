@@ -172,13 +172,8 @@ func TestLongReadWrite(t *testing.T) {
 	defer s.Close()
 	ln.Close()
 
-	var payload [10485760]byte
+	var payload [104857600]byte
 	_, err = rand.Read(payload[:])
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	err = s.SetDeadline(time.Now().Add(10000 * time.Millisecond))
 	if err != nil {
 		t.Fatal(err)
 	}
