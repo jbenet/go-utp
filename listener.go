@@ -1,21 +1,23 @@
 package utp
 
 import (
+	"errors"
 	"math"
 	"math/rand"
 	"net"
-	"sync"
 	"syscall"
 	"time"
 )
 
 type UTPListener struct {
 	conn     *net.UDPConn
-	conns    *connMap
+	conns    map[uint16]*UTPConn
 	accept   chan (*UTPConn)
 	err      chan (error)
 	lasterr  error
 	deadline time.Time
+	closech  chan int
+	connch   chan uint16
 }
 
 func Listen(n, laddr string) (*UTPListener, error) {
@@ -38,35 +40,66 @@ func ListenUTP(n string, laddr *UTPAddr) (*UTPListener, error) {
 
 	l := UTPListener{
 		conn:    conn,
-		conns:   &connMap{m: make(map[uint16]*UTPConn)},
+		conns:   make(map[uint16]*UTPConn),
 		accept:  make(chan (*UTPConn)),
 		err:     make(chan (error)),
+		closech: make(chan int),
+		connch:  make(chan uint16),
 		lasterr: nil,
 	}
 
-	go l.listen()
+	l.listen()
 	return &l, nil
 }
 
+type incoming struct {
+	p    packet
+	addr *net.UDPAddr
+}
+
 func (l *UTPListener) listen() {
-	for {
-		var buf [mtu]byte
-		len, addr, err := l.conn.ReadFromUDP(buf[:])
-		if err != nil {
-			l.err <- err
-			return
+	inch := make(chan incoming)
+
+	go func() {
+		for {
+			var buf [mtu]byte
+			len, addr, err := l.conn.ReadFromUDP(buf[:])
+			if err != nil {
+				l.err <- err
+				return
+			}
+			p, err := readPacket(buf[:len])
+			if err == nil {
+				inch <- incoming{p, addr}
+			}
 		}
-		p, err := readPacket(buf[:len])
-		if err == nil {
-			l.processPacket(p, addr)
+	}()
+
+	go func() {
+		var closed bool
+		for {
+			select {
+			case i := <-inch:
+				l.processPacket(i.p, i.addr)
+			case <-l.closech:
+				close(l.accept)
+				closed = true
+			case id := <-l.connch:
+				if _, ok := l.conns[id]; !ok {
+					delete(l.conns, id+1)
+					if closed && len(l.conns) == 0 {
+						l.conn.Close()
+					}
+				}
+			}
 		}
-	}
+	}()
 }
 
 func (l *UTPListener) processPacket(p packet, addr *net.UDPAddr) {
 	switch p.header.typ {
 	case st_data, st_fin, st_state, st_reset:
-		if c := l.conns.get(p.header.id); c != nil {
+		if c, ok := l.conns[p.header.id]; ok {
 			state := c.getState()
 			if !state.closed {
 				c.recvch <- &p
@@ -74,7 +107,7 @@ func (l *UTPListener) processPacket(p packet, addr *net.UDPAddr) {
 		}
 	case st_syn:
 		sid := p.header.id + 1
-		if !l.conns.contains(sid) {
+		if _, ok := l.conns[p.header.id]; !ok {
 			seq := rand.Intn(math.MaxUint16)
 			c := UTPConn{
 				conn:      l.conn,
@@ -94,8 +127,9 @@ func (l *UTPListener) processPacket(p packet, addr *net.UDPAddr) {
 				recvch: make(chan *packet, 2),
 				winch:  make(chan uint32),
 
-				readch: make(chan []byte, 100),
-				finch:  make(chan int, 1),
+				readch:  make(chan []byte, 100),
+				finch:   make(chan int, 1),
+				closech: l.connch,
 
 				keepalivech: make(chan time.Duration),
 
@@ -107,7 +141,7 @@ func (l *UTPListener) processPacket(p packet, addr *net.UDPAddr) {
 			go c.loop()
 			c.recvch <- &p
 
-			l.conns.set(sid, &c)
+			l.conns[sid] = &c
 			l.accept <- &c
 		}
 	}
@@ -130,6 +164,9 @@ func (l *UTPListener) AcceptUTP() (*UTPConn, error) {
 	}
 	select {
 	case conn := <-l.accept:
+		if conn == nil {
+			return nil, errors.New("use of closed network connection")
+		}
 		return conn, nil
 	case err := <-l.err:
 		l.lasterr = err
@@ -147,8 +184,8 @@ func (l *UTPListener) Close() error {
 	if l == nil || l.conn == nil {
 		return syscall.EINVAL
 	}
-	l.conns.close()
-	return l.conn.Close()
+	l.closech <- 0
+	return nil
 }
 
 func (l *UTPListener) SetDeadline(t time.Time) error {
@@ -157,44 +194,4 @@ func (l *UTPListener) SetDeadline(t time.Time) error {
 	}
 	l.deadline = t
 	return nil
-}
-
-type connMap struct {
-	m     map[uint16]*UTPConn
-	mutex sync.RWMutex
-}
-
-func (m *connMap) set(id uint16, conn *UTPConn) {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-	m.m[id] = conn
-}
-
-func (m *connMap) delete(id uint16) {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-	delete(m.m, id)
-}
-
-func (m *connMap) get(id uint16) *UTPConn {
-	m.mutex.RLock()
-	defer m.mutex.RUnlock()
-	return m.m[id]
-}
-
-func (m *connMap) contains(id uint16) bool {
-	m.mutex.RLock()
-	defer m.mutex.RUnlock()
-	return m.m[id] != nil
-}
-
-func (m *connMap) close() {
-	m.mutex.RLock()
-	for _, c := range m.m {
-		c.Close()
-	}
-	m.mutex.RUnlock()
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-	m.m = nil
 }

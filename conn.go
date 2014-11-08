@@ -31,6 +31,7 @@ type UTPConn struct {
 	readch      chan []byte
 	connch      chan error
 	finch       chan int
+	closech     chan<- uint16
 	eofid       uint16
 	keepalivech chan time.Duration
 
@@ -549,6 +550,9 @@ func (c *UTPConn) close() {
 		close(c.readch)
 		close(c.finch)
 		c.setState(state_closed)
+		if c.closech != nil {
+			c.closech <- c.sid
+		}
 	}
 }
 

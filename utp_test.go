@@ -46,7 +46,6 @@ func TestReadWrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ln.Close()
 
 	upaddr, err := ResolveUTPAddr("utp", "127.0.0.1:10000")
 	if err != nil {
@@ -72,6 +71,7 @@ func TestReadWrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	ln.Close()
 
 	payload := []byte("Hello!")
 	_, err = c.Write(payload)
@@ -144,7 +144,6 @@ func TestLongReadWrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ln.Close()
 
 	upaddr, err := ResolveUTPAddr("utp", "127.0.0.1:20000")
 	if err != nil {
@@ -171,6 +170,7 @@ func TestLongReadWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
+	ln.Close()
 
 	var payload [10485760]byte
 	_, err = rand.Read(payload[:])
