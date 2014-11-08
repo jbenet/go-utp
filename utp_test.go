@@ -2,11 +2,10 @@ package utp
 
 import (
 	"bytes"
-	"crypto/rand"
 	"io"
 	"io/ioutil"
 	"math"
-	mrand "math/rand"
+	"math/rand"
 	"net"
 	"reflect"
 	"testing"
@@ -14,7 +13,7 @@ import (
 )
 
 func init() {
-	mrand.Seed(time.Now().Unix())
+	rand.Seed(time.Now().Unix())
 }
 
 func TestReadWrite(t *testing.T) {
@@ -116,15 +115,15 @@ func TestReadWrite(t *testing.T) {
 }
 
 func TestLongReadWrite(t *testing.T) {
-	laddr, err := net.ResolveUDPAddr("udp", "127.0.0.1:20000")
+	laddr, err := net.ResolveUDPAddr("udp", "127.0.0.1:40000")
 	if err != nil {
 		t.Fatal(err)
 	}
-	saddr, err := net.ResolveUDPAddr("udp", "127.0.0.1:21000")
+	saddr, err := net.ResolveUDPAddr("udp", "127.0.0.1:41000")
 	if err != nil {
 		t.Fatal(err)
 	}
-	caddr, err := net.ResolveUDPAddr("udp", "127.0.0.1:22000")
+	caddr, err := net.ResolveUDPAddr("udp", "127.0.0.1:42000")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +134,7 @@ func TestLongReadWrite(t *testing.T) {
 	}
 	defer proxy.close()
 
-	usaddr, err := ResolveUTPAddr("utp", "127.0.0.1:21000")
+	usaddr, err := ResolveUTPAddr("utp", "127.0.0.1:41000")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,11 +144,11 @@ func TestLongReadWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	upaddr, err := ResolveUTPAddr("utp", "127.0.0.1:20000")
+	upaddr, err := ResolveUTPAddr("utp", "127.0.0.1:40000")
 	if err != nil {
 		t.Fatal(err)
 	}
-	ucaddr, err := ResolveUTPAddr("utp", "127.0.0.1:22000")
+	ucaddr, err := ResolveUTPAddr("utp", "127.0.0.1:42000")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,9 +172,8 @@ func TestLongReadWrite(t *testing.T) {
 	ln.Close()
 
 	var payload [104857600]byte
-	_, err = rand.Read(payload[:])
-	if err != nil {
-		t.Fatal(err)
+	for i := range payload {
+		payload[i] = byte(rand.Int())
 	}
 
 	rch := make(chan []byte)
@@ -490,7 +488,7 @@ func newProxy(laddr, saddr, caddr *net.UDPAddr, rate float32) (*proxy, error) {
 
 			var p packet
 			p.UnmarshalBinary(buf[:len])
-			if mrand.Float32() > rate {
+			if rand.Float32() > rate {
 				continue
 			}
 
