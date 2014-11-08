@@ -4,9 +4,9 @@ testnames=simple
 tests=$(addprefix test_, $(testnames))
 trash=.trash/
 
-all: clean deps ${tests}
+all: ucat
 
-test: ${tests}
+test: clean ucat ${tests}
 	@echo ${tests}
 	@echo "*** tests passed ***"
 
