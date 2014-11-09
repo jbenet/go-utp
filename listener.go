@@ -34,7 +34,7 @@ func ListenUTP(n string, laddr *UTPAddr) (*UTPListener, error) {
 	if err != nil {
 		return nil, err
 	}
-	conn, err := net.ListenPacket(udpnet, laddr.addr.String())
+	conn, err := listenPacket(udpnet, laddr.addr.String())
 	if err != nil {
 		return nil, err
 	}
@@ -95,6 +95,13 @@ func (l *UTPListener) listen() {
 			}
 		}
 	}()
+}
+
+func listenPacket(n, addr string) (net.PacketConn, error) {
+	if n == "mem" {
+		return nil, errors.New("TODO implement in-memory packet connection")
+	}
+	return net.ListenPacket(n, addr)
 }
 
 func (l *UTPListener) processPacket(p packet, addr net.Addr) {
