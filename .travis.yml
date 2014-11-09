@@ -1,6 +1,6 @@
 language: go
 
 script:
- - go test -v
+ - GO_UTP_LOGGING=3 go test -v
  - go test -v -race
  - cd _ucat_test; make test

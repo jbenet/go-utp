@@ -1,70 +1,50 @@
 package utp
 
-import stdlog "log"
+import (
+	"log"
+	"os"
+	"strconv"
+)
 
-type logger struct{}
-
-var log *logger
-
-func (l *logger) Fatal(v ...interface{}){
-  if l == nil {
-    return
-  }
-  stdlog.Fatal(v...)
+type logger struct {
+	level int
 }
 
-func (l *logger) Fatalf(format string, v ...interface{}){
-  if l == nil {
-    return
-  }
-  stdlog.Fatalf(format, v...)
+var ulog *logger
+
+func init() {
+	logenv := os.Getenv("GO_UTP_LOGGING")
+
+	var level int
+	if len(logenv) > 0 {
+		l, err := strconv.Atoi(logenv)
+		if err != nil {
+			log.Print("warning: GO_UTP_LOGGING must be numeric")
+		} else {
+			level = l
+		}
+	}
+
+	ulog = &logger{level}
 }
 
-func (l *logger) Fatalln(v ...interface{}){
-  if l == nil {
-    return
-  }
-  stdlog.Fatalln(v...)
-}
-
-func (l *logger) Panic(v ...interface{}){
-  if l == nil {
-    return
-  }
-  stdlog.Panic(v...)
-}
-
-func (l *logger) Panicf(format string, v ...interface{}){
-  if l == nil {
-    return
-  }
-  stdlog.Panicf(format, v...)
-}
-
-func (l *logger) Panicln(v ...interface{}){
-  if l == nil {
-    return
-  }
-  stdlog.Panicln(v...)
-}
-
-func (l *logger) Print(v ...interface{}) {
-	if l == nil {
+func (l *logger) Print(level int, v ...interface{}) {
+	if l.level < level {
 		return
 	}
-	stdlog.Print(v...)
+	log.Print(v...)
 }
 
-func (l *logger) Printf(format string, v ...interface{}){
-  if l == nil {
+func (l *logger) Printf(level int, format string, v ...interface{}) {
+  if l.level < level {
     return
   }
-  stdlog.Printf(format, v...)
+	log.Printf(format, v...)
 }
 
-func (l *logger) Println(v ...interface{}){
-  if l == nil {
+func (l *logger) Println(level int, v ...interface{}) {
+  if l.level < level {
     return
   }
-  stdlog.Println(v...)
+	log.Println(v...)
 }

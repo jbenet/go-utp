@@ -108,6 +108,7 @@ func dial(n string, laddr, raddr *UTPAddr, timeout time.Duration) (*UTPConn, err
 			c.setState(state_closed)
 			return nil, err
 		}
+		ulog.Printf(1, "Conn(%v): Connected", c.LocalAddr())
 		return &c, nil
 	case <-t:
 		c.setState(state_closed)
@@ -125,8 +126,11 @@ func (c *UTPConn) Close() error {
 	state := c.getState()
 	if state.active && state.exit != nil {
 		state.exit(c)
+		ulog.Printf(2, "Conn(%v): Wait closing", c.LocalAddr())
 		<-c.finch
 	}
+
+	ulog.Printf(1, "Conn(%v): Closed", c.LocalAddr())
 	return c.closefunc()
 }
 
@@ -193,6 +197,7 @@ func (c *UTPConn) Write(b []byte) (int, error) {
 		return 0, errors.New("use of closed network connection")
 	}
 
+	var wrote int
 	buf := bytes.NewBuffer(append([]byte(nil), b...))
 	for {
 		var payload [mss]byte
@@ -201,10 +206,13 @@ func (c *UTPConn) Write(b []byte) (int, error) {
 			break
 		}
 		c.outch <- &outgoingPacket{st_data, nil, payload[:l]}
+		wrote += l
+		ulog.Printf(4, "Conn(%v): Write %d/%d bytes", c.LocalAddr(), wrote, len(b))
 		if l < mss {
 			break
 		}
 	}
+
 	return len(b), nil
 }
 
@@ -324,6 +332,7 @@ func (c *UTPConn) loop() {
 		case <-time.After(time.Duration(c.rto) * time.Millisecond):
 			state := c.getState()
 			if !state.active && time.Now().Sub(lastReceived) > reset_timeout {
+				ulog.Printf(2, "Conn(%v): Connection timed out", c.LocalAddr())
 				c.sendPacket(outgoingPacket{st_reset, nil, nil})
 				c.close()
 			} else {
@@ -343,6 +352,7 @@ func (c *UTPConn) loop() {
 				keepalive = time.Tick(d)
 			}
 		case <-keepalive:
+			ulog.Printf(2, "Conn(%v): Send keepalive", c.LocalAddr())
 			c.sendPacket(outgoingPacket{st_state, nil, nil})
 		}
 		if recvExit && sendExit {
@@ -355,7 +365,7 @@ func (c *UTPConn) sendPacket(b outgoingPacket) {
 	p := c.makePacket(b)
 	bin, err := p.MarshalBinary()
 	if err == nil {
-		log.Printf("SEND %v -> %v: %v", c.Conn.LocalAddr(), c.raddr, p.String())
+		ulog.Printf(3, "SEND %v -> %v: %v", c.Conn.LocalAddr(), c.raddr, p.String())
 		_, err = c.Conn.WriteTo(bin, c.raddr)
 		if err != nil {
 			return
@@ -369,7 +379,7 @@ func (c *UTPConn) sendPacket(b outgoingPacket) {
 func (c *UTPConn) resendPacket(p packet) {
 	bin, err := p.MarshalBinary()
 	if err == nil {
-		log.Printf("RESEND %v -> %v: %v", c.Conn.LocalAddr(), c.raddr, p.String())
+		ulog.Printf(3, "RESEND %v -> %v: %v", c.Conn.LocalAddr(), c.raddr, p.String())
 		_, err = c.Conn.WriteTo(bin, c.raddr)
 		if err != nil {
 			return
@@ -394,7 +404,7 @@ func (c *UTPConn) processPacket(p packet) {
 		}
 	}
 
-	log.Printf("RECV %v -> %v: %v", c.raddr, c.Conn.LocalAddr(), p.String())
+	ulog.Printf(3, "RECV %v -> %v: %v", c.raddr, c.Conn.LocalAddr(), p.String())
 
 	state := c.getState()
 	if p.header.typ == st_state {
@@ -430,18 +440,21 @@ func (c *UTPConn) processPacket(p packet) {
 				if c.maxWindow < mtu {
 					c.maxWindow = mtu
 				}
+				ulog.Printf(4, "Conn(%v): Update maxWindow: %d", c.LocalAddr(), c.maxWindow)
 			}
 		}
 		c.sendbuf.compact()
 		if c.lastAck == p.header.ack {
 			c.dupAck++
 			if c.dupAck >= 2 {
+				ulog.Printf(3, "Conn(%v): Receive 3 duplicated acks: %d", c.LocalAddr(), p.header.ack)
 				p, err := c.sendbuf.first()
 				if err == nil {
 					c.maxWindow /= 2
 					if c.maxWindow < mtu {
 						c.maxWindow = mtu
 					}
+					ulog.Printf(4, "Conn(%v): Update maxWindow: %d", c.LocalAddr(), c.maxWindow)
 					c.resendPacket(p)
 				}
 				c.dupAck = 0
@@ -455,6 +468,7 @@ func (c *UTPConn) processPacket(p packet) {
 			if wnd > c.maxWindow {
 				wnd = c.maxWindow
 			}
+			ulog.Printf(4, "Conn(%v): Reset window: %d", c.LocalAddr(), wnd)
 			c.winch <- wnd
 		}
 		if state.state != nil {
@@ -544,6 +558,7 @@ func (c *UTPConn) close() {
 }
 
 func (c *UTPConn) closing() {
+	ulog.Printf(1, "Conn(%v): Closing", c.LocalAddr())
 	c.setState(state_closing)
 }
 

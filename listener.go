@@ -83,18 +83,24 @@ func (l *UTPListener) listen() {
 			case i := <-inch:
 				l.processPacket(i.p, i.addr)
 			case <-l.closech:
+				ulog.Printf(2, "Listener(%v): Stop litening", l.Conn.LocalAddr())
 				close(l.accept)
 				l.closed = true
 			case id := <-l.connch:
 				if _, ok := l.conns[id]; !ok {
 					delete(l.conns, id+1)
+					ulog.Printf(2, "Listener(%v): Connection closed #%d (alive: %d)", l.Conn.LocalAddr(), id, len(l.conns))
 					if l.closed && len(l.conns) == 0 {
+						ulog.Printf(2, "Listener(%v): All accepted connections are closed", l.Conn.LocalAddr())
 						l.Conn.Close()
+						ulog.Printf(1, "Listener(%v): Closed", l.Conn.LocalAddr())
 					}
 				}
 			}
 		}
 	}()
+
+	ulog.Printf(1, "Listener(%v): Start listening", l.Conn.LocalAddr())
 }
 
 func listenPacket(n, addr string) (net.PacketConn, error) {
@@ -153,6 +159,8 @@ func (l *UTPListener) processPacket(p packet, addr net.Addr) {
 			c.recvch <- &p
 
 			l.conns[sid] = &c
+			ulog.Printf(2, "Listener(%v): New incoming connection #%d from %v (alive: %d)", l.Conn.LocalAddr(), sid, addr, len(l.conns))
+
 			l.accept <- &c
 		}
 	}
