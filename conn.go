@@ -355,6 +355,7 @@ func (c *UTPConn) sendPacket(b outgoingPacket) {
 	p := c.makePacket(b)
 	bin, err := p.MarshalBinary()
 	if err == nil {
+		log.Printf("SEND %v -> %v: %v", c.Conn.LocalAddr(), c.raddr, p.String())
 		_, err = c.Conn.WriteTo(bin, c.raddr)
 		if err != nil {
 			return
@@ -368,6 +369,7 @@ func (c *UTPConn) sendPacket(b outgoingPacket) {
 func (c *UTPConn) resendPacket(p packet) {
 	bin, err := p.MarshalBinary()
 	if err == nil {
+		log.Printf("RESEND %v -> %v: %v", c.Conn.LocalAddr(), c.raddr, p.String())
 		_, err = c.Conn.WriteTo(bin, c.raddr)
 		if err != nil {
 			return
@@ -391,6 +393,8 @@ func (c *UTPConn) processPacket(p packet) {
 			}
 		}
 	}
+
+	log.Printf("RECV %v -> %v: %v", c.raddr, c.Conn.LocalAddr(), p.String())
 
 	state := c.getState()
 	if p.header.typ == st_state {
