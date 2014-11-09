@@ -13,7 +13,6 @@ test: clean ucat ${tests}
 # not sue why this doesn't work:
 # test_%: test_%.sh
 test_simple: test_simple.sh
-	mkdir -p ${trash}
 	@echo "*** running $@ ***"
 	./$@.sh
 
