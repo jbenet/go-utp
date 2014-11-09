@@ -142,7 +142,7 @@ func (l *UTPListener) processPacket(p packet, addr net.Addr) {
 				outch:  make(chan *outgoingPacket, 10),
 				sendch: make(chan *outgoingPacket, 10),
 				recvch: make(chan *packet, 2),
-				winch:  make(chan uint32),
+				winch:  make(chan uint32, 2),
 
 				readch:  make(chan []byte, 100),
 				finch:   make(chan int, 1),

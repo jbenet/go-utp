@@ -82,7 +82,7 @@ func dial(n string, laddr, raddr *UTPAddr, timeout time.Duration) (*UTPConn, err
 		readch: make(chan []byte, 100),
 		connch: make(chan error, 1),
 		finch:  make(chan int, 1),
-		winch:  make(chan uint32),
+		winch:  make(chan uint32, 2),
 
 		keepalivech: make(chan time.Duration),
 
