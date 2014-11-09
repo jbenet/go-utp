@@ -181,7 +181,7 @@ func (l *UTPListener) AcceptUTP() (*UTPConn, error) {
 }
 
 func (l *UTPListener) Addr() net.Addr {
-	return &UTPAddr{addr: l.Conn.LocalAddr()} // TODO make based on conn impl
+	return &UTPAddr{addr: l.Conn.LocalAddr()}
 }
 
 func (l *UTPListener) Close() error {
