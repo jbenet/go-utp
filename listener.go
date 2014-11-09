@@ -18,6 +18,7 @@ type UTPListener struct {
 	deadline time.Time
 	closech  chan int
 	connch   chan uint16
+	closed   bool
 }
 
 func Listen(n, laddr string) (*UTPListener, error) {
@@ -76,18 +77,17 @@ func (l *UTPListener) listen() {
 	}()
 
 	go func() {
-		var closed bool
 		for {
 			select {
 			case i := <-inch:
 				l.processPacket(i.p, i.addr)
 			case <-l.closech:
 				close(l.accept)
-				closed = true
+				l.closed = true
 			case id := <-l.connch:
 				if _, ok := l.conns[id]; !ok {
 					delete(l.conns, id+1)
-					if closed && len(l.conns) == 0 {
+					if l.closed && len(l.conns) == 0 {
 						l.conn.Close()
 					}
 				}
@@ -106,6 +106,9 @@ func (l *UTPListener) processPacket(p packet, addr *net.UDPAddr) {
 			}
 		}
 	case st_syn:
+		if l.closed {
+			return
+		}
 		sid := p.header.id + 1
 		if _, ok := l.conns[p.header.id]; !ok {
 			seq := rand.Intn(math.MaxUint16)
