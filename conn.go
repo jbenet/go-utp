@@ -23,7 +23,8 @@ type UTPConn struct {
 	state      state
 	stateMutex sync.RWMutex
 
-	outch  chan *outgoingPacket
+	exitch chan int
+	outch  chan chan *outgoingPacket
 	sendch chan *outgoingPacket
 	recvch chan *packet
 	winch  chan uint32
@@ -75,7 +76,8 @@ func dial(n string, laddr, raddr *UTPAddr, timeout time.Duration) (*UTPConn, err
 		rto:       1000,
 		state:     state_syn_sent,
 
-		outch:  make(chan *outgoingPacket, 10),
+		exitch: make(chan int),
+		outch:  make(chan chan *outgoingPacket),
 		sendch: make(chan *outgoingPacket, 10),
 		recvch: make(chan *packet, 2),
 
@@ -205,7 +207,11 @@ func (c *UTPConn) Write(b []byte) (int, error) {
 		if err != nil {
 			break
 		}
-		c.outch <- &outgoingPacket{st_data, nil, payload[:l]}
+		if outch, ok := <- c.outch; ok {
+			outch <- &outgoingPacket{st_data, nil, payload[:l]}
+		} else {
+			return 0, errors.New("use of closed network connection")
+		}
 		wrote += l
 		ulog.Printf(4, "Conn(%v): Write %d/%d bytes", c.LocalAddr(), wrote, len(b))
 		if l < mss {
@@ -291,20 +297,32 @@ func (c *UTPConn) loop() {
 	var keepalive <-chan time.Time
 
 	go func() {
+		outch := make(chan *outgoingPacket, 10)
+		for {
+			select {
+				case c.outch <- outch:
+				case <-c.exitch:
+					close(c.outch)
+					return
+			}
+		}
+	}()
+
+	go func() {
 		var window uint32 = window_size * mtu
 		for {
 			if window >= mtu {
-				select {
-				case b := <-c.outch:
-					if b != nil {
+				if outch, ok := <- c.outch; ok {
+					select {
+					case b := <-outch:
 						c.sendch <- b
 						window -= mtu
-					} else {
-						c.sendch <- nil
-						return
+					case w := <-c.winch:
+						window = w
 					}
-				case w := <-c.winch:
-					window = w
+				} else {
+					c.sendch <- nil
+					return
 				}
 			} else {
 				window = <-c.winch
@@ -547,7 +565,7 @@ func (c *UTPConn) close() {
 	state := c.getState()
 	if !state.closed {
 		c.recvch <- nil
-		close(c.outch)
+		close(c.exitch)
 		close(c.readch)
 		close(c.finch)
 		c.setState(state_closed)
@@ -615,7 +633,9 @@ var state_connected state = state{
 		}
 	},
 	exit: func(c *UTPConn) {
-		c.outch <- &outgoingPacket{st_fin, nil, nil}
+		if outch, ok := <-c.outch; ok {
+			outch <- &outgoingPacket{st_fin, nil, nil}
+		}
 		c.setState(state_fin_sent)
 	},
 	active:   true,
