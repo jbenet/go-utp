@@ -10,7 +10,7 @@ import (
 )
 
 type UTPListener struct {
-	conn     *net.UDPConn
+	Conn     *net.UDPConn
 	conns    map[uint16]*UTPConn
 	accept   chan (*UTPConn)
 	err      chan (error)
@@ -40,7 +40,7 @@ func ListenUTP(n string, laddr *UTPAddr) (*UTPListener, error) {
 	}
 
 	l := UTPListener{
-		conn:    conn,
+		Conn:    conn,
 		conns:   make(map[uint16]*UTPConn),
 		accept:  make(chan (*UTPConn), 10),
 		err:     make(chan (error)),
@@ -64,7 +64,7 @@ func (l *UTPListener) listen() {
 	go func() {
 		for {
 			var buf [mtu]byte
-			len, addr, err := l.conn.ReadFromUDP(buf[:])
+			len, addr, err := l.Conn.ReadFromUDP(buf[:])
 			if err != nil {
 				l.err <- err
 				return
@@ -88,7 +88,7 @@ func (l *UTPListener) listen() {
 				if _, ok := l.conns[id]; !ok {
 					delete(l.conns, id+1)
 					if l.closed && len(l.conns) == 0 {
-						l.conn.Close()
+						l.Conn.Close()
 					}
 				}
 			}
@@ -113,7 +113,7 @@ func (l *UTPListener) processPacket(p packet, addr *net.UDPAddr) {
 		if _, ok := l.conns[p.header.id]; !ok {
 			seq := rand.Intn(math.MaxUint16)
 			c := UTPConn{
-				conn:      l.conn,
+				Conn:      l.Conn,
 				raddr:     addr,
 				rid:       p.header.id + 1,
 				sid:       p.header.id,
@@ -155,7 +155,7 @@ func (l *UTPListener) Accept() (net.Conn, error) {
 }
 
 func (l *UTPListener) AcceptUTP() (*UTPConn, error) {
-	if l == nil || l.conn == nil {
+	if l == nil || l.Conn == nil {
 		return nil, syscall.EINVAL
 	}
 	if l.lasterr != nil {
@@ -180,11 +180,11 @@ func (l *UTPListener) AcceptUTP() (*UTPConn, error) {
 }
 
 func (l *UTPListener) Addr() net.Addr {
-	return &UTPAddr{addr: l.conn.LocalAddr().(*net.UDPAddr)}
+	return &UTPAddr{addr: l.Conn.LocalAddr().(*net.UDPAddr)}
 }
 
 func (l *UTPListener) Close() error {
-	if l == nil || l.conn == nil {
+	if l == nil || l.Conn == nil {
 		return syscall.EINVAL
 	}
 	l.closech <- 0
@@ -192,7 +192,7 @@ func (l *UTPListener) Close() error {
 }
 
 func (l *UTPListener) SetDeadline(t time.Time) error {
-	if l == nil || l.conn == nil {
+	if l == nil || l.Conn == nil {
 		return syscall.EINVAL
 	}
 	l.deadline = t

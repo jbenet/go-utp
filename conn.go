@@ -13,7 +13,7 @@ import (
 )
 
 type UTPConn struct {
-	conn                             *net.UDPConn
+	Conn                             *net.UDPConn
 	raddr                            *net.UDPAddr
 	rid, sid, seq, ack, lastAck      uint16
 	rtt, rttVar, minRtt, rto, dupAck int
@@ -62,7 +62,7 @@ func dial(n string, laddr, raddr *UTPAddr, timeout time.Duration) (*UTPConn, err
 
 	id := uint16(rand.Intn(math.MaxUint16))
 	c := UTPConn{
-		conn:      conn,
+		Conn:      conn,
 		raddr:     raddr.addr,
 		rid:       id,
 		sid:       id + 1,
@@ -114,7 +114,7 @@ func dial(n string, laddr, raddr *UTPAddr, timeout time.Duration) (*UTPConn, err
 	}
 }
 
-func (c *UTPConn) ok() bool { return c != nil && c.conn != nil }
+func (c *UTPConn) ok() bool { return c != nil && c.Conn != nil }
 
 func (c *UTPConn) Close() error {
 	if !c.ok() {
@@ -130,7 +130,7 @@ func (c *UTPConn) Close() error {
 }
 
 func (c *UTPConn) LocalAddr() net.Addr {
-	return &UTPAddr{addr: c.conn.LocalAddr().(*net.UDPAddr)}
+	return &UTPAddr{addr: c.Conn.LocalAddr().(*net.UDPAddr)}
 }
 
 func (c *UTPConn) RemoteAddr() net.Addr {
@@ -262,7 +262,7 @@ func readPacket(data []byte) (packet, error) {
 func (c *UTPConn) recv() {
 	for {
 		var buf [mtu]byte
-		len, addr, err := c.conn.ReadFromUDP(buf[:])
+		len, addr, err := c.Conn.ReadFromUDP(buf[:])
 		if err != nil {
 			return
 		}
@@ -354,7 +354,7 @@ func (c *UTPConn) sendPacket(b outgoingPacket) {
 	p := c.makePacket(b)
 	bin, err := p.MarshalBinary()
 	if err == nil {
-		_, err = c.conn.WriteToUDP(bin, c.raddr)
+		_, err = c.Conn.WriteToUDP(bin, c.raddr)
 		if err != nil {
 			return
 		}
@@ -367,7 +367,7 @@ func (c *UTPConn) sendPacket(b outgoingPacket) {
 func (c *UTPConn) resendPacket(p packet) {
 	bin, err := p.MarshalBinary()
 	if err == nil {
-		_, err = c.conn.WriteToUDP(bin, c.raddr)
+		_, err = c.Conn.WriteToUDP(bin, c.raddr)
 		if err != nil {
 			return
 		}
