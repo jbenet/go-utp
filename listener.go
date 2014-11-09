@@ -10,7 +10,7 @@ import (
 )
 
 type UTPListener struct {
-	Conn     *net.UDPConn
+	Conn     net.PacketConn
 	conns    map[uint16]*UTPConn
 	accept   chan (*UTPConn)
 	err      chan (error)
@@ -34,7 +34,7 @@ func ListenUTP(n string, laddr *UTPAddr) (*UTPListener, error) {
 	if err != nil {
 		return nil, err
 	}
-	conn, err := net.ListenUDP(udpnet, laddr.addr)
+	conn, err := net.ListenPacket(udpnet, laddr.addr.String())
 	if err != nil {
 		return nil, err
 	}
@@ -55,16 +55,17 @@ func ListenUTP(n string, laddr *UTPAddr) (*UTPListener, error) {
 
 type incoming struct {
 	p    packet
-	addr *net.UDPAddr
+	addr net.Addr
 }
 
 func (l *UTPListener) listen() {
 	inch := make(chan incoming)
 
+	// reads udp packets
 	go func() {
 		for {
 			var buf [mtu]byte
-			len, addr, err := l.Conn.ReadFromUDP(buf[:])
+			len, addr, err := l.Conn.ReadFrom(buf[:])
 			if err != nil {
 				l.err <- err
 				return
@@ -96,7 +97,7 @@ func (l *UTPListener) listen() {
 	}()
 }
 
-func (l *UTPListener) processPacket(p packet, addr *net.UDPAddr) {
+func (l *UTPListener) processPacket(p packet, addr net.Addr) {
 	switch p.header.typ {
 	case st_data, st_fin, st_state, st_reset:
 		if c, ok := l.conns[p.header.id]; ok {
@@ -180,7 +181,7 @@ func (l *UTPListener) AcceptUTP() (*UTPConn, error) {
 }
 
 func (l *UTPListener) Addr() net.Addr {
-	return &UTPAddr{addr: l.Conn.LocalAddr().(*net.UDPAddr)}
+	return &UTPAddr{addr: l.Conn.LocalAddr()} // TODO make based on conn impl
 }
 
 func (l *UTPListener) Close() error {

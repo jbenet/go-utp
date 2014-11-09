@@ -13,8 +13,8 @@ import (
 )
 
 type UTPConn struct {
-	Conn                             *net.UDPConn
-	raddr                            *net.UDPAddr
+	Conn                             net.PacketConn
+	raddr                            net.Addr
 	rid, sid, seq, ack, lastAck      uint16
 	rtt, rttVar, minRtt, rto, dupAck int
 	diff, maxWindow                  uint32
@@ -47,6 +47,7 @@ func dial(n string, laddr, raddr *UTPAddr, timeout time.Duration) (*UTPConn, err
 		return nil, err
 	}
 
+	// TODO extract
 	if laddr == nil {
 		addr, err := net.ResolveUDPAddr(udpnet, ":0")
 		if err != nil {
@@ -55,7 +56,7 @@ func dial(n string, laddr, raddr *UTPAddr, timeout time.Duration) (*UTPConn, err
 		laddr = &UTPAddr{addr: addr}
 	}
 
-	conn, err := net.ListenUDP(udpnet, laddr.addr)
+	conn, err := net.ListenPacket(udpnet, laddr.addr.String())
 	if err != nil {
 		return nil, err
 	}
@@ -262,7 +263,7 @@ func readPacket(data []byte) (packet, error) {
 func (c *UTPConn) recv() {
 	for {
 		var buf [mtu]byte
-		len, addr, err := c.Conn.ReadFromUDP(buf[:])
+		len, addr, err := c.Conn.ReadFrom(buf[:])
 		if err != nil {
 			return
 		}
@@ -354,7 +355,7 @@ func (c *UTPConn) sendPacket(b outgoingPacket) {
 	p := c.makePacket(b)
 	bin, err := p.MarshalBinary()
 	if err == nil {
-		_, err = c.Conn.WriteToUDP(bin, c.raddr)
+		_, err = c.Conn.WriteTo(bin, c.raddr)
 		if err != nil {
 			return
 		}
@@ -367,7 +368,7 @@ func (c *UTPConn) sendPacket(b outgoingPacket) {
 func (c *UTPConn) resendPacket(p packet) {
 	bin, err := p.MarshalBinary()
 	if err == nil {
-		_, err = c.Conn.WriteToUDP(bin, c.raddr)
+		_, err = c.Conn.WriteTo(bin, c.raddr)
 		if err != nil {
 			return
 		}
