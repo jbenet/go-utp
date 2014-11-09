@@ -3,7 +3,7 @@ package utp
 import "net"
 
 type UTPAddr struct {
-	addr *net.UDPAddr
+	addr net.Addr
 }
 
 func (a *UTPAddr) Network() string { return "utp" }
