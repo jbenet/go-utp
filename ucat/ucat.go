@@ -123,9 +123,8 @@ func Listen(localAddr string) error {
 	}
 	log("accepted connection from %s", c.RemoteAddr())
 
-	// should be able to close listener here, but utp.Listener.Close
-	// closes all open connections.
-	defer l.Close()
+	// done with listener
+	l.Close()
 
 	netcat(c)
 	return c.Close()
