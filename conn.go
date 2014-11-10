@@ -337,8 +337,11 @@ func (c *UTPConn) loop() {
 		select {
 		case p := <-c.recvch:
 			if p != nil {
-				c.processPacket(*p)
+				ack := c.processPacket(*p)
 				lastReceived = time.Now()
+				if ack {
+					c.sendPacket(outgoingPacket{st_state, nil, nil})
+				}
 			} else {
 				recvExit = true
 			}
@@ -412,7 +415,9 @@ func currentMicrosecond() uint32 {
 	return uint32(time.Now().Nanosecond() / 1000)
 }
 
-func (c *UTPConn) processPacket(p packet) {
+func (c *UTPConn) processPacket(p packet) bool {
+	var ack bool
+
 	if p.header.t == 0 {
 		c.diff = 0
 	} else {
@@ -499,9 +504,9 @@ func (c *UTPConn) processPacket(p packet) {
 		c.close()
 	} else {
 		if c.recvbuf == nil {
-			return
+			return false
 		}
-		c.sendch <- &outgoingPacket{st_state, nil, nil}
+		ack = true
 		c.recvbuf.push(p)
 		for _, s := range c.recvbuf.sequence() {
 			state := c.getState()
@@ -522,6 +527,7 @@ func (c *UTPConn) processPacket(p packet) {
 			}
 		}
 	}
+	return ack
 }
 
 func (c *UTPConn) makePacket(b outgoingPacket) *packet {
