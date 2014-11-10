@@ -23,11 +23,12 @@ type UTPConn struct {
 	state      state
 	stateMutex sync.RWMutex
 
-	exitch chan int
-	outch  chan chan *outgoingPacket
-	sendch chan *outgoingPacket
-	recvch chan *packet
-	winch  chan uint32
+	exitch  chan int
+	outch   chan *outgoingPacket
+	outchch chan chan *outgoingPacket
+	sendch  chan *outgoingPacket
+	recvch  chan *packet
+	winch   chan uint32
 
 	readch      chan chan []byte
 	connch      chan error
@@ -76,10 +77,10 @@ func dial(n string, laddr, raddr *UTPAddr, timeout time.Duration) (*UTPConn, err
 		rto:       1000,
 		state:     state_syn_sent,
 
-		exitch: make(chan int),
-		outch:  make(chan chan *outgoingPacket),
-		sendch: make(chan *outgoingPacket, 10),
-		recvch: make(chan *packet, 2),
+		exitch:  make(chan int),
+		outchch: make(chan chan *outgoingPacket),
+		sendch:  make(chan *outgoingPacket, 10),
+		recvch:  make(chan *packet, 2),
 
 		readch: make(chan chan []byte),
 		connch: make(chan error, 1),
@@ -205,7 +206,7 @@ func (c *UTPConn) Write(b []byte) (int, error) {
 		if err != nil {
 			break
 		}
-		if outch, ok := <-c.outch; ok {
+		if outch, ok := <-c.outchch; ok {
 			outch <- &outgoingPacket{st_data, nil, payload[:l]}
 		} else {
 			return 0, errors.New("use of closed network connection")
@@ -295,15 +296,15 @@ func (c *UTPConn) loop() {
 	var keepalive <-chan time.Time
 
 	go func() {
-		outch := make(chan *outgoingPacket, 10)
+		c.outch = make(chan *outgoingPacket, 10)
 		readch := make(chan []byte, 100)
 		for {
 			select {
-			case c.outch <- outch:
+			case c.outchch <- c.outch:
 			case c.readch <- readch:
 			case <-c.exitch:
+				close(c.outchch)
 				close(c.outch)
-				close(outch)
 				close(c.readch)
 				close(readch)
 				return
@@ -315,17 +316,16 @@ func (c *UTPConn) loop() {
 		var window uint32 = window_size * mtu
 		for {
 			if window >= mtu {
-				if outch, ok := <-c.outch; ok {
-					select {
-					case b := <-outch:
-						c.sendch <- b
-						window -= mtu
-					case w := <-c.winch:
-						window = w
+				select {
+				case b := <-c.outch:
+					if b == nil {
+						c.sendch <- nil
+						return
 					}
-				} else {
-					c.sendch <- nil
-					return
+					c.sendch <- b
+					window -= mtu
+				case w := <-c.winch:
+					window = w
 				}
 			} else {
 				window = <-c.winch
@@ -665,7 +665,7 @@ var state_connected state = state{
 		}
 	},
 	exit: func(c *UTPConn) {
-		if outch, ok := <-c.outch; ok {
+		if outch, ok := <-c.outchch; ok {
 			outch <- &outgoingPacket{st_fin, nil, nil}
 		}
 		c.fin_sent()

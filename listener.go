@@ -139,11 +139,11 @@ func (l *UTPListener) processPacket(p packet, addr net.Addr) {
 				rto:       1000,
 				state:     state_connected,
 
-				exitch: make(chan int),
-				outch:  make(chan chan *outgoingPacket),
-				sendch: make(chan *outgoingPacket, 10),
-				recvch: make(chan *packet, 2),
-				winch:  make(chan uint32, 2),
+				exitch:  make(chan int),
+				outchch: make(chan chan *outgoingPacket),
+				sendch:  make(chan *outgoingPacket, 10),
+				recvch:  make(chan *packet, 2),
+				winch:   make(chan uint32, 2),
 
 				readch:  make(chan chan []byte),
 				finch:   make(chan int, 1),
