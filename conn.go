@@ -41,7 +41,6 @@ type UTPConn struct {
 	readbuf   bytes.Buffer
 	recvbuf   *packetBuffer
 	sendbuf   *packetBuffer
-	closefunc func() error
 }
 
 func dial(n string, laddr, raddr *UTPAddr, timeout time.Duration) (*UTPConn, error) {
@@ -91,9 +90,6 @@ func dial(n string, laddr, raddr *UTPAddr, timeout time.Duration) (*UTPConn, err
 		keepalivech: make(chan time.Duration),
 
 		sendbuf: newPacketBuffer(window_size, 1),
-		closefunc: func() error {
-			return conn.Close()
-		},
 	}
 
 	go c.recv()
@@ -135,7 +131,12 @@ func (c *UTPConn) Close() error {
 	}
 
 	ulog.Printf(1, "Conn(%v): Closed", c.LocalAddr())
-	return c.closefunc()
+
+	// Accepted connection
+	if c.closech != nil {
+		c.Conn.Close()
+	}
+	return nil
 }
 
 func (c *UTPConn) LocalAddr() net.Addr {
@@ -187,7 +188,7 @@ func (c *UTPConn) Write(b []byte) (int, error) {
 	if !c.ok() {
 		return 0, syscall.EINVAL
 	}
-	
+
 	var wrote int
 	buf := bytes.NewBuffer(append([]byte(nil), b...))
 	for {
@@ -570,6 +571,8 @@ func (c *UTPConn) close() {
 		close(c.exitch)
 		close(c.finch)
 		c.closed()
+
+		// Accepted connection
 		if c.closech != nil {
 			c.closech <- c.sid
 		}

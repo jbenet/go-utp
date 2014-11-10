@@ -153,7 +153,6 @@ func (l *UTPListener) processPacket(p packet, addr net.Addr) {
 
 				recvbuf:   newPacketBuffer(window_size, int(p.header.seq)),
 				sendbuf:   newPacketBuffer(window_size, seq),
-				closefunc: func() error { return nil },
 			}
 
 			go c.loop()
