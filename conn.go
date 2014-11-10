@@ -207,7 +207,7 @@ func (c *UTPConn) Write(b []byte) (int, error) {
 		if err != nil {
 			break
 		}
-		if outch, ok := <- c.outch; ok {
+		if outch, ok := <-c.outch; ok {
 			outch <- &outgoingPacket{st_data, nil, payload[:l]}
 		} else {
 			return 0, errors.New("use of closed network connection")
@@ -300,10 +300,11 @@ func (c *UTPConn) loop() {
 		outch := make(chan *outgoingPacket, 10)
 		for {
 			select {
-				case c.outch <- outch:
-				case <-c.exitch:
-					close(c.outch)
-					return
+			case c.outch <- outch:
+			case <-c.exitch:
+				close(c.outch)
+				close(outch)
+				return
 			}
 		}
 	}()
@@ -312,7 +313,7 @@ func (c *UTPConn) loop() {
 		var window uint32 = window_size * mtu
 		for {
 			if window >= mtu {
-				if outch, ok := <- c.outch; ok {
+				if outch, ok := <-c.outch; ok {
 					select {
 					case b := <-outch:
 						c.sendch <- b
