@@ -290,9 +290,10 @@ func (c *UTPConn) loop() {
 	var lastReceived time.Time
 	var keepalive <-chan time.Time
 
+	c.outch = make(chan *outgoingPacket, 10)
+	c.readch = make(chan []byte, 100)
+
 	go func() {
-		c.outch = make(chan *outgoingPacket, 10)
-		c.readch = make(chan []byte, 100)
 		for {
 			select {
 			case c.outchch <- c.outch:
