@@ -39,11 +39,11 @@ test_send() {
   fi
 
   echo rm ${file}{expected,actual1,actual2}
-  rm ${file}{expected,actual1,actual2}
+  #rm ${file}{expected,actual1,actual2}
   return 0
 }
 
 
 test_send ".trash/1KB" 1024
 test_send ".trash/1MB" 1048576
-test_send ".trash/1GB" 1073741824
+test_send ".trash/10GB" 10737418240

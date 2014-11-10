@@ -187,12 +187,7 @@ func (c *UTPConn) Write(b []byte) (int, error) {
 	if !c.ok() {
 		return 0, syscall.EINVAL
 	}
-
-	state := c.getState()
-	if !state.writable {
-		return 0, errors.New("use of closed network connection")
-	}
-
+	
 	var wrote int
 	buf := bytes.NewBuffer(append([]byte(nil), b...))
 	for {
@@ -612,8 +607,6 @@ type state struct {
 	state    func(c *UTPConn, p packet)
 	exit     func(c *UTPConn)
 	active   bool
-	readable bool
-	writable bool
 	closed   bool
 }
 
@@ -635,7 +628,6 @@ var state_closing state = state{
 			c.close()
 		}
 	},
-	readable: true,
 }
 
 var state_syn_sent state = state{
@@ -645,8 +637,6 @@ var state_syn_sent state = state{
 		c.connch <- nil
 	},
 	active:   true,
-	readable: true,
-	writable: true,
 }
 
 var state_connected state = state{
@@ -669,8 +659,6 @@ var state_connected state = state{
 		c.fin_sent()
 	},
 	active:   true,
-	readable: true,
-	writable: true,
 }
 
 var state_fin_sent state = state{
@@ -683,5 +671,4 @@ var state_fin_sent state = state{
 			}
 		}
 	},
-	readable: true,
 }
