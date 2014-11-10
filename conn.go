@@ -107,13 +107,13 @@ func dial(n string, laddr, raddr *UTPAddr, timeout time.Duration) (*UTPConn, err
 	select {
 	case err := <-c.connch:
 		if err != nil {
-			c.setState(state_closed)
+			c.closed()
 			return nil, err
 		}
 		ulog.Printf(1, "Conn(%v): Connected", c.LocalAddr())
 		return &c, nil
 	case <-t:
-		c.setState(state_closed)
+		c.closed()
 		return nil, &timeoutError{}
 	}
 }
@@ -128,7 +128,7 @@ func (c *UTPConn) Close() error {
 	state := c.getState()
 	if state.active && state.exit != nil {
 		state.exit(c)
-		ulog.Printf(2, "Conn(%v): Wait closing", c.LocalAddr())
+		ulog.Printf(2, "Conn(%v): Wait for close", c.LocalAddr())
 		<-c.finch
 	}
 
@@ -569,16 +569,36 @@ func (c *UTPConn) close() {
 		close(c.exitch)
 		close(c.readch)
 		close(c.finch)
-		c.setState(state_closed)
+		c.closed()
 		if c.closech != nil {
 			c.closech <- c.sid
 		}
 	}
 }
 
+func (c *UTPConn) closed() {
+	ulog.Printf(2, "Conn(%v): Change state: CLOSED", c.LocalAddr())
+	c.setState(state_closed)
+}
+
 func (c *UTPConn) closing() {
-	ulog.Printf(1, "Conn(%v): Closing", c.LocalAddr())
+	ulog.Printf(2, "Conn(%v): Change state: CLOSING", c.LocalAddr())
 	c.setState(state_closing)
+}
+
+func (c *UTPConn) syn_sent() {
+	ulog.Printf(2, "Conn(%v): Change state: SYN_SENT", c.LocalAddr())
+	c.setState(state_syn_sent)
+}
+
+func (c *UTPConn) connected() {
+	ulog.Printf(2, "Conn(%v): Change state: CONNECTED", c.LocalAddr())
+	c.setState(state_connected)
+}
+
+func (c *UTPConn) fin_sent() {
+	ulog.Printf(2, "Conn(%v): Change state: FIN_SENT", c.LocalAddr())
+	c.setState(state_fin_sent)
 }
 
 type state struct {
@@ -614,7 +634,7 @@ var state_closing state = state{
 var state_syn_sent state = state{
 	state: func(c *UTPConn, p packet) {
 		c.recvbuf = newPacketBuffer(window_size, int(p.header.seq))
-		c.setState(state_connected)
+		c.connected()
 		c.connch <- nil
 	},
 	active:   true,
@@ -637,7 +657,7 @@ var state_connected state = state{
 		if outch, ok := <-c.outch; ok {
 			outch <- &outgoingPacket{st_fin, nil, nil}
 		}
-		c.setState(state_fin_sent)
+		c.fin_sent()
 	},
 	active:   true,
 	readable: true,
