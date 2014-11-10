@@ -491,7 +491,9 @@ func (c *UTPConn) processPacket(p packet) bool {
 				wnd = c.maxWindow
 			}
 			ulog.Printf(4, "Conn(%v): Reset window: %d", c.LocalAddr(), wnd)
-			c.winch <- wnd
+			go func() {
+				c.winch <- wnd
+			}()
 		}
 		if state.state != nil {
 			state.state(c, p)
