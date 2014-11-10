@@ -38,9 +38,9 @@ type UTPConn struct {
 	eofid       uint16
 	keepalivech chan time.Duration
 
-	readbuf   bytes.Buffer
-	recvbuf   *packetBuffer
-	sendbuf   *packetBuffer
+	readbuf bytes.Buffer
+	recvbuf *packetBuffer
+	sendbuf *packetBuffer
 }
 
 func dial(n string, laddr, raddr *UTPAddr, timeout time.Duration) (*UTPConn, error) {
@@ -64,33 +64,15 @@ func dial(n string, laddr, raddr *UTPAddr, timeout time.Duration) (*UTPConn, err
 	}
 
 	id := uint16(rand.Intn(math.MaxUint16))
-	c := UTPConn{
-		Conn:      conn,
-		raddr:     raddr.addr,
-		rid:       id,
-		sid:       id + 1,
-		seq:       1,
-		ack:       0,
-		minRtt:    math.MaxInt64,
-		diff:      0,
-		maxWindow: mtu,
-		rto:       1000,
-		state:     state_syn_sent,
 
-		exitch:  make(chan int),
-		outchch: make(chan chan *outgoingPacket),
-		sendch:  make(chan *outgoingPacket, 10),
-		recvch:  make(chan *packet, 2),
-
-		readchch: make(chan chan []byte),
-		connch:   make(chan error, 1),
-		finch:    make(chan int, 1),
-		winch:    make(chan uint32, 2),
-
-		keepalivech: make(chan time.Duration),
-
-		sendbuf: newPacketBuffer(window_size, 1),
-	}
+	c := newUTPConn()
+	c.Conn = conn
+	c.raddr = raddr.addr
+	c.rid = id
+	c.sid = id + 1
+	c.seq = 1
+	c.state = state_syn_sent
+	c.sendbuf = newPacketBuffer(window_size, 1)
 
 	go c.recv()
 	go c.loop()
@@ -109,10 +91,30 @@ func dial(n string, laddr, raddr *UTPAddr, timeout time.Duration) (*UTPConn, err
 			return nil, err
 		}
 		ulog.Printf(1, "Conn(%v): Connected", c.LocalAddr())
-		return &c, nil
+		return c, nil
 	case <-t:
 		c.closed()
 		return nil, &timeoutError{}
+	}
+}
+
+func newUTPConn() *UTPConn {
+	return &UTPConn{
+		minRtt:    math.MaxInt64,
+		maxWindow: mtu,
+		rto:       1000,
+
+		exitch:  make(chan int),
+		outchch: make(chan chan *outgoingPacket),
+		sendch:  make(chan *outgoingPacket, 10),
+		recvch:  make(chan *packet, 2),
+		winch:   make(chan uint32, 2),
+
+		readchch: make(chan chan []byte),
+		connch:   make(chan error, 1),
+		finch:    make(chan int, 1),
+
+		keepalivech: make(chan time.Duration),
 	}
 }
 
@@ -605,12 +607,12 @@ func (c *UTPConn) fin_sent() {
 }
 
 type state struct {
-	data     func(c *UTPConn, p packet)
-	fin      func(c *UTPConn, p packet)
-	state    func(c *UTPConn, p packet)
-	exit     func(c *UTPConn)
-	active   bool
-	closed   bool
+	data   func(c *UTPConn, p packet)
+	fin    func(c *UTPConn, p packet)
+	state  func(c *UTPConn, p packet)
+	exit   func(c *UTPConn)
+	active bool
+	closed bool
 }
 
 var state_closed state = state{
@@ -639,7 +641,7 @@ var state_syn_sent state = state{
 		c.connected()
 		c.connch <- nil
 	},
-	active:   true,
+	active: true,
 }
 
 var state_connected state = state{
@@ -661,7 +663,7 @@ var state_connected state = state{
 		}
 		c.fin_sent()
 	},
-	active:   true,
+	active: true,
 }
 
 var state_fin_sent state = state{

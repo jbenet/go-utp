@@ -126,42 +126,27 @@ func (l *UTPListener) processPacket(p packet, addr net.Addr) {
 		sid := p.header.id + 1
 		if _, ok := l.conns[p.header.id]; !ok {
 			seq := rand.Intn(math.MaxUint16)
-			c := UTPConn{
-				Conn:      l.Conn,
-				raddr:     addr,
-				rid:       p.header.id + 1,
-				sid:       p.header.id,
-				seq:       uint16(seq),
-				ack:       p.header.seq,
-				minRtt:    math.MaxInt64,
-				diff:      currentMicrosecond() - p.header.t,
-				maxWindow: mtu,
-				rto:       1000,
-				state:     state_connected,
 
-				exitch:  make(chan int),
-				outchch: make(chan chan *outgoingPacket),
-				sendch:  make(chan *outgoingPacket, 10),
-				recvch:  make(chan *packet, 2),
-				winch:   make(chan uint32, 2),
-
-				readchch: make(chan chan []byte),
-				finch:    make(chan int, 1),
-				closech:  l.connch,
-
-				keepalivech: make(chan time.Duration),
-
-				recvbuf:   newPacketBuffer(window_size, int(p.header.seq)),
-				sendbuf:   newPacketBuffer(window_size, seq),
-			}
+			c := newUTPConn()
+			c.Conn = l.Conn
+			c.raddr = addr
+			c.rid = p.header.id + 1
+			c.sid = p.header.id
+			c.seq = uint16(seq)
+			c.ack = p.header.seq
+			c.diff = currentMicrosecond() - p.header.t
+			c.state = state_connected
+			c.closech = l.connch
+			c.recvbuf = newPacketBuffer(window_size, int(p.header.seq))
+			c.sendbuf = newPacketBuffer(window_size, seq)
 
 			go c.loop()
 			c.recvch <- &p
 
-			l.conns[sid] = &c
+			l.conns[sid] = c
 			ulog.Printf(2, "Listener(%v): New incoming connection #%d from %v (alive: %d)", l.Conn.LocalAddr(), sid, addr, len(l.conns))
 
-			l.accept <- &c
+			l.accept <- c
 		}
 	}
 }

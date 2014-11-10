@@ -36,15 +36,15 @@ func (l *logger) Print(level int, v ...interface{}) {
 }
 
 func (l *logger) Printf(level int, format string, v ...interface{}) {
-  if l.level < level {
-    return
-  }
+	if l.level < level {
+		return
+	}
 	log.Printf(format, v...)
 }
 
 func (l *logger) Println(level int, v ...interface{}) {
-  if l.level < level {
-    return
-  }
+	if l.level < level {
+		return
+	}
 	log.Println(v...)
 }
