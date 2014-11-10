@@ -29,7 +29,7 @@ type UTPConn struct {
 	recvch chan *packet
 	winch  chan uint32
 
-	readch      chan []byte
+	readch      chan chan []byte
 	connch      chan error
 	finch       chan int
 	closech     chan<- uint16
@@ -81,7 +81,7 @@ func dial(n string, laddr, raddr *UTPAddr, timeout time.Duration) (*UTPConn, err
 		sendch: make(chan *outgoingPacket, 10),
 		recvch: make(chan *packet, 2),
 
-		readch: make(chan []byte, 100),
+		readch: make(chan chan []byte),
 		connch: make(chan error, 1),
 		finch:  make(chan int, 1),
 		winch:  make(chan uint32, 2),
@@ -149,41 +149,39 @@ func (c *UTPConn) Read(b []byte) (int, error) {
 		return 0, syscall.EINVAL
 	}
 
-	state := c.getState()
-	if !state.readable {
-		if c.readbuf.Len() != 0 {
-			return c.readbuf.Read(b)
+	if c.readbuf.Len() == 0 {
+		if readch, ok := <-c.readch; ok {
+			var timeout <-chan time.Time
+			if !c.rdeadline.IsZero() {
+				timeout = time.After(c.rdeadline.Sub(time.Now()))
+			}
+
+			select {
+			case b := <-readch:
+				if b == nil {
+					return 0, io.EOF
+				}
+				_, err := c.readbuf.Write(b)
+				if err != nil {
+					return 0, err
+				}
+			case <-timeout:
+				return 0, &timeoutError{}
+			}
+		} else {
+			return 0, io.EOF
 		}
-		return 0, io.EOF
 	}
 
-	if c.readbuf.Len() == 0 {
-		var timeout <-chan time.Time
-		if !c.rdeadline.IsZero() {
-			timeout = time.After(c.rdeadline.Sub(time.Now()))
-		}
-
+	if readch, ok := <-c.readch; ok {
 		select {
-		case b := <-c.readch:
-			if b == nil {
-				return 0, io.EOF
-			}
+		case b := <-readch:
 			_, err := c.readbuf.Write(b)
 			if err != nil {
 				return 0, err
 			}
-		case <-timeout:
-			return 0, &timeoutError{}
+		default:
 		}
-	}
-
-	select {
-	case b := <-c.readch:
-		_, err := c.readbuf.Write(b)
-		if err != nil {
-			return 0, err
-		}
-	default:
 	}
 
 	return c.readbuf.Read(b)
@@ -298,12 +296,16 @@ func (c *UTPConn) loop() {
 
 	go func() {
 		outch := make(chan *outgoingPacket, 10)
+		readch := make(chan []byte, 100)
 		for {
 			select {
 			case c.outch <- outch:
+			case c.readch <- readch:
 			case <-c.exitch:
 				close(c.outch)
 				close(outch)
+				close(c.readch)
+				close(readch)
 				return
 			}
 		}
@@ -567,7 +569,6 @@ func (c *UTPConn) close() {
 	if !state.closed {
 		c.recvch <- nil
 		close(c.exitch)
-		close(c.readch)
 		close(c.finch)
 		c.closed()
 		if c.closech != nil {
@@ -618,7 +619,9 @@ var state_closed state = state{
 
 var state_closing state = state{
 	data: func(c *UTPConn, p packet) {
-		c.readch <- append([]byte(nil), p.payload...)
+		if readch, ok := <-c.readch; ok {
+			readch <- append([]byte(nil), p.payload...)
+		}
 		if c.recvbuf.empty() && c.sendbuf.empty() {
 			c.close()
 		}
@@ -644,7 +647,9 @@ var state_syn_sent state = state{
 
 var state_connected state = state{
 	data: func(c *UTPConn, p packet) {
-		c.readch <- append([]byte(nil), p.payload...)
+		if readch, ok := <-c.readch; ok {
+			readch <- append([]byte(nil), p.payload...)
+		}
 	},
 	fin: func(c *UTPConn, p packet) {
 		if c.recvbuf.empty() && c.sendbuf.empty() {
