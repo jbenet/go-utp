@@ -7,7 +7,6 @@ import (
 	"math"
 	"math/rand"
 	"net"
-	"sync"
 	"syscall"
 	"time"
 )
@@ -20,8 +19,7 @@ type UTPConn struct {
 	diff, maxWindow                  uint32
 	rdeadline, wdeadline             time.Time
 
-	state      state
-	stateMutex sync.RWMutex
+	state state
 
 	exitch   chan int
 	outch    chan *outgoingPacket
