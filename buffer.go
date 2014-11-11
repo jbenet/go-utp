@@ -115,12 +115,11 @@ func (b *packetBuffer) generateSelectiveACK() []byte {
 	}
 
 	var ack []byte
-	var bit int
+	var bit uint
 	var octet byte
 	for p := b.root.next; p != nil; p = p.next {
-		octet <<= 1
 		if p.p != nil {
-			octet |= 1
+			octet |= (1 << bit)
 		}
 		bit++
 		if bit == 8 {
@@ -139,4 +138,29 @@ func (b *packetBuffer) generateSelectiveACK() []byte {
 	}
 
 	return ack
+}
+
+func (b *packetBuffer) processSelectiveACK(ack []byte) {
+	if b.empty() {
+		return
+	}
+
+	p := b.root.next
+	if p == nil {
+		return
+	}
+
+	for _, a := range ack {
+		for i := 0; i < 8; i++ {
+			acked := (a & 1) != 0
+			a >>= 1
+			if acked {
+				p.p = nil
+			}
+			p = p.next
+			if p == nil {
+				return
+			}
+		}
+	}
 }

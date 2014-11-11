@@ -397,7 +397,7 @@ func TestPacketBuffer(t *testing.T) {
 		}
 	}
 
-	a = []byte{1, 1}
+	a = []byte{128, 2}
 	ack = b.generateSelectiveACK()
 	if !bytes.Equal(a, ack) {
 		t.Errorf("expected ack == %v; got %v", a, ack)
@@ -411,6 +411,14 @@ func TestPacketBuffer(t *testing.T) {
 	b.compact()
 	if b.space() != 9 {
 		t.Errorf("expected space == 9; got %d", b.space())
+	}
+
+	ack = b.generateSelectiveACK()
+	b.processSelectiveACK(ack)
+
+	all = b.all()
+	if len(all) != 1 {
+		t.Errorf("expected size == 1; got %d", len(all))
 	}
 }
 
