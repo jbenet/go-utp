@@ -42,7 +42,7 @@ func main() {
 	if *h {
 		fmt.Printf("S2C: %f%sbps\n", n, p)
 	} else {
-		fmt.Printf("S2C: %f\n", c2s)
+		fmt.Printf("S2C: %f\n", s2c)
 	}
 
 	avg := (c2s + s2c) / 2.0
