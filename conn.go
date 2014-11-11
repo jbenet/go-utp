@@ -16,7 +16,7 @@ type UTPConn struct {
 	Conn                             net.PacketConn
 	raddr                            net.Addr
 	rid, sid, seq, ack, lastAck      uint16
-	rtt, rttVar, minRtt, rto, dupAck int
+	rtt, rttVar, minRtt, rto, dupAck int64
 	diff, maxWindow                  uint32
 	rdeadline, wdeadline             time.Time
 
@@ -419,8 +419,8 @@ func (c *UTPConn) processPacket(p packet) bool {
 		t := currentMicrosecond()
 		if t > p.header.t {
 			c.diff = t - p.header.t
-			if c.minRtt > int(c.diff) {
-				c.minRtt = int(c.diff)
+			if c.minRtt > int64(c.diff) {
+				c.minRtt = int64(c.diff)
 			}
 		}
 	}
@@ -432,7 +432,7 @@ func (c *UTPConn) processPacket(p packet) bool {
 		if err == nil {
 			current := currentMicrosecond()
 			if current > s.header.t {
-				e := int(current-s.header.t) / 1000
+				e := int64(current-s.header.t) / 1000
 				if c.rtt == 0 {
 					c.rtt = e
 					c.rttVar = e / 2
