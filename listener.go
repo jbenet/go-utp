@@ -114,10 +114,7 @@ func (l *UTPListener) processPacket(p packet, addr net.Addr) {
 	switch p.header.typ {
 	case st_data, st_fin, st_state, st_reset:
 		if c, ok := l.conns[p.header.id]; ok {
-			state := c.getState()
-			if !state.closed {
-				c.recvch <- &p
-			}
+			c.recvch <- &p
 		}
 	case st_syn:
 		if l.closed {
