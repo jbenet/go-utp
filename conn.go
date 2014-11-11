@@ -131,13 +131,6 @@ func (c *UTPConn) Close() error {
 		ulog.Printf(2, "Conn(%v): Wait for close", c.LocalAddr())
 		<-c.finch
 	}
-
-	ulog.Printf(1, "Conn(%v): Closed", c.LocalAddr())
-
-	// Accepted connection
-	if c.closech != nil {
-		c.Conn.Close()
-	}
 	return nil
 }
 
@@ -577,7 +570,11 @@ func (c *UTPConn) close() {
 		// Accepted connection
 		if c.closech != nil {
 			c.closech <- c.sid
+		} else {
+			c.Conn.Close()
 		}
+
+		ulog.Printf(1, "Conn(%v): Closed", c.LocalAddr())
 	}
 }
 
