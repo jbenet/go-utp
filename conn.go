@@ -29,6 +29,8 @@ type UTPConn struct {
 	sendch  chan *outgoingPacket
 	recvch  chan *packet
 	winch   chan uint32
+	quitch chan int
+	activech chan bool
 
 	readch      chan []byte
 	readchch    chan chan []byte
@@ -109,6 +111,8 @@ func newUTPConn() *UTPConn {
 		sendch:  make(chan *outgoingPacket, 10),
 		recvch:  make(chan *packet, 2),
 		winch:   make(chan uint32, 2),
+		quitch: make(chan int),
+		activech: make(chan bool),
 
 		readchch: make(chan chan []byte),
 		connch:   make(chan error, 1),
@@ -125,9 +129,8 @@ func (c *UTPConn) Close() error {
 		return syscall.EINVAL
 	}
 
-	state := c.getState()
-	if state.active && state.exit != nil {
-		state.exit(c)
+	if <-c.activech {
+		c.quitch<-0
 		ulog.Printf(2, "Conn(%v): Wait for close", c.LocalAddr())
 		<-c.finch
 	}
@@ -240,8 +243,7 @@ func (c *UTPConn) SetKeepAlive(d time.Duration) error {
 	if !c.ok() {
 		return syscall.EINVAL
 	}
-	state := c.getState()
-	if state.active {
+	if <-c.activech {
 		c.keepalivech <- d
 	}
 	return nil
@@ -289,11 +291,13 @@ func (c *UTPConn) loop() {
 			select {
 			case c.outchch <- c.outch:
 			case c.readchch <- c.readch:
+			case c.activech <- true:
 			case <-c.exitch:
 				close(c.outchch)
 				close(c.outch)
 				close(c.readchch)
 				close(c.readch)
+				close(c.activech)
 				return
 			}
 		}
@@ -365,6 +369,12 @@ func (c *UTPConn) loop() {
 		case <-keepalive:
 			ulog.Printf(2, "Conn(%v): Send keepalive", c.LocalAddr())
 			c.sendPacket(outgoingPacket{st_state, nil, nil})
+
+		case <-c.quitch:
+			state := c.getState()
+			if state.exit != nil {
+				state.exit(c)
+			}
 		}
 		if recvExit && sendExit {
 			return
