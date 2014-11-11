@@ -108,3 +108,35 @@ func (b *packetBuffer) space() int {
 func (b *packetBuffer) empty() bool {
 	return b.root == nil
 }
+
+func (b *packetBuffer) generateSelectiveACK() []byte {
+	if b.empty() {
+		return nil
+	}
+
+	var ack []byte
+	var bit int
+	var octet byte
+	for p := b.root.next; p != nil; p = p.next {
+		octet <<= 1
+		if p.p != nil {
+			octet |= 1
+		}
+		bit++
+		if bit == 8 {
+			ack = append(ack, octet)
+			bit = 0
+			octet = 0
+		}
+	}
+
+	if bit != 0 {
+		ack = append(ack, octet)
+	}
+
+	for len(ack) > 0 && ack[len(ack)-1] == 0 {
+		ack = ack[:len(ack)-1]
+	}
+
+	return ack
+}

@@ -357,6 +357,12 @@ func TestPacketBuffer(t *testing.T) {
 		t.Errorf("expected space == 0; got %d", b.space())
 	}
 
+	a := []byte{255, 7}
+	ack := b.generateSelectiveACK()
+	if !bytes.Equal(a, ack) {
+		t.Errorf("expected ack == %v; got %v", a, ack)
+	}
+
 	err := b.push(packet{header: header{seq: 15}})
 	if err == nil {
 		t.Fatal("push should fail")
@@ -389,6 +395,12 @@ func TestPacketBuffer(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+	}
+
+	a = []byte{1, 1}
+	ack = b.generateSelectiveACK()
+	if !bytes.Equal(a, ack) {
+		t.Errorf("expected ack == %v; got %v", a, ack)
 	}
 
 	all = b.all()
