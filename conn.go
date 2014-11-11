@@ -23,13 +23,13 @@ type UTPConn struct {
 	state      state
 	stateMutex sync.RWMutex
 
-	exitch  chan int
-	outch   chan *outgoingPacket
-	outchch chan chan *outgoingPacket
-	sendch  chan *outgoingPacket
-	recvch  chan *packet
-	winch   chan uint32
-	quitch chan int
+	exitch   chan int
+	outch    chan *outgoingPacket
+	outchch  chan chan *outgoingPacket
+	sendch   chan *outgoingPacket
+	recvch   chan *packet
+	winch    chan uint32
+	quitch   chan int
 	activech chan bool
 
 	readch      chan []byte
@@ -106,12 +106,12 @@ func newUTPConn() *UTPConn {
 		maxWindow: mtu,
 		rto:       1000,
 
-		exitch:  make(chan int),
-		outchch: make(chan chan *outgoingPacket),
-		sendch:  make(chan *outgoingPacket, 10),
-		recvch:  make(chan *packet, 2),
-		winch:   make(chan uint32, 2),
-		quitch: make(chan int),
+		exitch:   make(chan int),
+		outchch:  make(chan chan *outgoingPacket),
+		sendch:   make(chan *outgoingPacket, 10),
+		recvch:   make(chan *packet, 2),
+		winch:    make(chan uint32, 2),
+		quitch:   make(chan int),
 		activech: make(chan bool),
 
 		readchch: make(chan chan []byte),
@@ -130,7 +130,7 @@ func (c *UTPConn) Close() error {
 	}
 
 	if <-c.activech {
-		c.quitch<-0
+		c.quitch <- 0
 		ulog.Printf(2, "Conn(%v): Wait for close", c.LocalAddr())
 		<-c.finch
 	}
@@ -345,8 +345,7 @@ func (c *UTPConn) loop() {
 			}
 
 		case <-time.After(time.Duration(c.rto) * time.Millisecond):
-			state := c.getState()
-			if !state.active && time.Now().Sub(lastReceived) > reset_timeout {
+			if !c.state.active && time.Now().Sub(lastReceived) > reset_timeout {
 				ulog.Printf(2, "Conn(%v): Connection timed out", c.LocalAddr())
 				c.sendPacket(outgoingPacket{st_reset, nil, nil})
 				c.close()
@@ -371,9 +370,8 @@ func (c *UTPConn) loop() {
 			c.sendPacket(outgoingPacket{st_state, nil, nil})
 
 		case <-c.quitch:
-			state := c.getState()
-			if state.exit != nil {
-				state.exit(c)
+			if c.state.exit != nil {
+				c.state.exit(c)
 			}
 		}
 		if recvExit && sendExit {
@@ -429,7 +427,6 @@ func (c *UTPConn) processPacket(p packet) bool {
 
 	ulog.Printf(3, "RECV %v -> %v: %v", c.raddr, c.Conn.LocalAddr(), p.String())
 
-	state := c.getState()
 	if p.header.typ == st_state {
 		s, err := c.sendbuf.fetch(p.header.ack)
 		if err == nil {
@@ -496,8 +493,8 @@ func (c *UTPConn) processPacket(p packet) bool {
 				c.winch <- wnd
 			}()
 		}
-		if state.state != nil {
-			state.state(c, p)
+		if c.state.state != nil {
+			c.state.state(c, p)
 		}
 	} else if p.header.typ == st_reset {
 		c.close()
@@ -508,20 +505,19 @@ func (c *UTPConn) processPacket(p packet) bool {
 		ack = true
 		c.recvbuf.push(p)
 		for _, s := range c.recvbuf.sequence() {
-			state := c.getState()
 			c.ack = s.header.seq
 			switch s.header.typ {
 			case st_data:
-				if state.data != nil {
-					state.data(c, s)
+				if c.state.data != nil {
+					c.state.data(c, s)
 				}
 			case st_fin:
-				if state.fin != nil {
-					state.fin(c, s)
+				if c.state.fin != nil {
+					c.state.fin(c, s)
 				}
 			case st_state:
-				if state.state != nil {
-					state.state(c, s)
+				if c.state.state != nil {
+					c.state.state(c, s)
 				}
 			}
 		}
@@ -557,21 +553,8 @@ func (c *UTPConn) makePacket(b outgoingPacket) *packet {
 	return &packet{header: h, payload: b.payload}
 }
 
-func (c *UTPConn) setState(s state) {
-	c.stateMutex.Lock()
-	defer c.stateMutex.Unlock()
-	c.state = s
-}
-
-func (c *UTPConn) getState() state {
-	c.stateMutex.RLock()
-	defer c.stateMutex.RUnlock()
-	return c.state
-}
-
 func (c *UTPConn) close() {
-	state := c.getState()
-	if !state.closed {
+	if !c.state.closed {
 		c.recvch <- nil
 		close(c.exitch)
 		close(c.finch)
@@ -590,27 +573,27 @@ func (c *UTPConn) close() {
 
 func (c *UTPConn) closed() {
 	ulog.Printf(2, "Conn(%v): Change state: CLOSED", c.LocalAddr())
-	c.setState(state_closed)
+	c.state = state_closed
 }
 
 func (c *UTPConn) closing() {
 	ulog.Printf(2, "Conn(%v): Change state: CLOSING", c.LocalAddr())
-	c.setState(state_closing)
+	c.state = state_closing
 }
 
 func (c *UTPConn) syn_sent() {
 	ulog.Printf(2, "Conn(%v): Change state: SYN_SENT", c.LocalAddr())
-	c.setState(state_syn_sent)
+	c.state = state_syn_sent
 }
 
 func (c *UTPConn) connected() {
 	ulog.Printf(2, "Conn(%v): Change state: CONNECTED", c.LocalAddr())
-	c.setState(state_connected)
+	c.state = state_connected
 }
 
 func (c *UTPConn) fin_sent() {
 	ulog.Printf(2, "Conn(%v): Change state: FIN_SENT", c.LocalAddr())
-	c.setState(state_fin_sent)
+	c.state = state_fin_sent
 }
 
 type state struct {
