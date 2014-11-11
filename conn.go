@@ -649,7 +649,9 @@ var state_connected state = state{
 	},
 	exit: func(c *UTPConn) {
 		if outch, ok := <-c.outchch; ok {
-			outch <- &outgoingPacket{st_fin, nil, nil}
+			go func() {
+				outch <- &outgoingPacket{st_fin, nil, nil}
+			}()
 		}
 		c.fin_sent()
 	},
