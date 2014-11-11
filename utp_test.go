@@ -17,45 +17,17 @@ func init() {
 }
 
 func TestReadWrite(t *testing.T) {
-	laddr, err := net.ResolveUDPAddr("udp", "127.0.0.1:10000")
-	if err != nil {
-		t.Fatal(err)
-	}
-	saddr, err := net.ResolveUDPAddr("udp", "127.0.0.1:11000")
-	if err != nil {
-		t.Fatal(err)
-	}
-	caddr, err := net.ResolveUDPAddr("udp", "127.0.0.1:12000")
+	ln, err := Listen("utp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	proxy, err := newProxy(laddr, saddr, caddr, 1.0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer proxy.close()
-
-	usaddr, err := ResolveUTPAddr("utp", "127.0.0.1:11000")
+	raddr, err := ResolveUTPAddr("utp", ln.Addr().String())
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	ln, err := ListenUTP("utp", usaddr)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	upaddr, err := ResolveUTPAddr("utp", "127.0.0.1:10000")
-	if err != nil {
-		t.Fatal(err)
-	}
-	ucaddr, err := ResolveUTPAddr("utp", "127.0.0.1:12000")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	c, err := DialUTPTimeout("utp", ucaddr, upaddr, 1000*time.Millisecond)
+	c, err := DialUTPTimeout("utp", nil, raddr, 1000*time.Millisecond)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,45 +87,17 @@ func TestReadWrite(t *testing.T) {
 }
 
 func TestLongReadWrite(t *testing.T) {
-	laddr, err := net.ResolveUDPAddr("udp", "127.0.0.1:40000")
-	if err != nil {
-		t.Fatal(err)
-	}
-	saddr, err := net.ResolveUDPAddr("udp", "127.0.0.1:41000")
-	if err != nil {
-		t.Fatal(err)
-	}
-	caddr, err := net.ResolveUDPAddr("udp", "127.0.0.1:42000")
+	ln, err := Listen("utp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	proxy, err := newProxy(laddr, saddr, caddr, 1.0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer proxy.close()
-
-	usaddr, err := ResolveUTPAddr("utp", "127.0.0.1:41000")
+	raddr, err := ResolveUTPAddr("utp", ln.Addr().String())
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	ln, err := ListenUTP("utp", usaddr)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	upaddr, err := ResolveUTPAddr("utp", "127.0.0.1:40000")
-	if err != nil {
-		t.Fatal(err)
-	}
-	ucaddr, err := ResolveUTPAddr("utp", "127.0.0.1:42000")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	c, err := DialUTPTimeout("utp", ucaddr, upaddr, 1000*time.Millisecond)
+	c, err := DialUTPTimeout("utp", nil, raddr, 1000*time.Millisecond)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +115,7 @@ func TestLongReadWrite(t *testing.T) {
 	defer s.Close()
 	ln.Close()
 
-	var payload [104857600]byte
+	var payload [10485760]byte
 	for i := range payload {
 		payload[i] = byte(rand.Int())
 	}
@@ -467,47 +411,4 @@ func TestPacketBufferBoundary(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-}
-
-type proxy struct {
-	ln *net.UDPConn
-}
-
-func newProxy(laddr, saddr, caddr *net.UDPAddr, rate float32) (*proxy, error) {
-	ln, err := net.ListenUDP("udp", laddr)
-	if err != nil {
-		return nil, err
-	}
-	go func() {
-		for {
-			var buf [mtu]byte
-			len, addr, err := ln.ReadFromUDP(buf[:])
-			if err != nil {
-				return
-			}
-
-			var p packet
-			p.UnmarshalBinary(buf[:len])
-			if rand.Float32() > rate {
-				continue
-			}
-
-			if addr.String() == saddr.String() {
-				_, err := ln.WriteToUDP(buf[:len], caddr)
-				if err != nil {
-					return
-				}
-			} else if addr.String() == caddr.String() {
-				_, err := ln.WriteToUDP(buf[:len], saddr)
-				if err != nil {
-					return
-				}
-			}
-		}
-	}()
-	return &proxy{ln: ln}, nil
-}
-
-func (p *proxy) close() {
-	p.ln.Close()
 }
