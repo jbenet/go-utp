@@ -329,7 +329,17 @@ func (c *UTPConn) loop() {
 				ack := c.processPacket(*p)
 				lastReceived = time.Now()
 				if ack {
-					c.sendPacket(outgoingPacket{st_state, nil, nil})
+					out := outgoingPacket{st_state, nil, nil}
+					selack := c.sendbuf.generateSelectiveACK()
+					if len(selack) > 0 {
+						out.ext = []extension{
+							extension{
+								typ:     ext_selective_ack,
+								payload: selack,
+							},
+						}
+					}
+					c.sendPacket(out)
 				}
 			} else {
 				recvExit = true
@@ -426,6 +436,17 @@ func (c *UTPConn) processPacket(p packet) bool {
 	ulog.Printf(3, "RECV %v -> %v: %v", c.raddr, c.Conn.LocalAddr(), p.String())
 
 	if p.header.typ == st_state {
+
+		f, err := c.sendbuf.first()
+		if err != nil && p.header.ack == f.header.seq {
+			for _, e := range p.ext {
+				if e.typ == ext_selective_ack {
+					ulog.Printf(0, "Conn(%v): Receive Selective ACK", c.LocalAddr())
+					c.sendbuf.processSelectiveACK(e.payload)
+				}
+			}
+		}
+
 		s, err := c.sendbuf.fetch(p.header.ack)
 		if err == nil {
 			current := currentMicrosecond()
