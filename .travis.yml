@@ -4,3 +4,4 @@ script:
  - GO_UTP_LOGGING=2 go test -v
  - go test -v -race
  - cd _ucat_test; make test
+ - go run benchmark/main.go -h
