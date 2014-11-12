@@ -86,7 +86,7 @@ func TestReadWrite(t *testing.T) {
 	}
 }
 
-func TestLongReadWrite(t *testing.T) {
+func TestLongReadWriteC2S(t *testing.T) {
 	ln, err := Listen("utp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -133,6 +133,77 @@ func TestLongReadWrite(t *testing.T) {
 
 	go func() {
 		b, err := ioutil.ReadAll(s)
+		if err != nil {
+			ech <- err
+			rch <- nil
+		} else {
+			ech <- nil
+			rch <- b
+		}
+	}()
+
+	err = <-ech
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r := <-rch
+	if r == nil {
+		return
+	}
+
+	if !bytes.Equal(r, payload[:]) {
+		t.Errorf("expected payload of %d; got %d", len(payload[:]), len(r))
+	}
+}
+
+func TestLongReadWriteS2C(t *testing.T) {
+	ln, err := Listen("utp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	raddr, err := ResolveUTPAddr("utp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	c, err := DialUTPTimeout("utp", nil, raddr, 1000*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	err = ln.SetDeadline(time.Now().Add(1000 * time.Millisecond))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := ln.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ln.Close()
+
+	var payload [10485760]byte
+	for i := range payload {
+		payload[i] = byte(rand.Int())
+	}
+
+	rch := make(chan []byte)
+	ech := make(chan error, 2)
+
+	go func() {
+		defer s.Close()
+		_, err := s.Write(payload[:])
+		if err != nil {
+			ech <- err
+		}
+	}()
+
+	go func() {
+		b, err := ioutil.ReadAll(c)
 		if err != nil {
 			ech <- err
 			rch <- nil

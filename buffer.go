@@ -88,11 +88,20 @@ func (b *packetBuffer) first() (packet, error) {
 	return *b.root.p, nil
 }
 
-func (b *packetBuffer) sequence() []packet {
+func (b *packetBuffer) fetchSequence() []packet {
 	var a []packet
 	for ; b.root != nil && b.root.p != nil; b.root = b.root.next {
 		a = append(a, *b.root.p)
 		b.begin = (b.begin + 1) % (math.MaxUint16 + 1)
+	}
+	return a
+}
+
+func (b *packetBuffer) sequence() []packet {
+	var a []packet
+	n := b.root
+	for ; n != nil && n.p != nil; n = n.next {
+		a = append(a, *n.p)
 	}
 	return a
 }

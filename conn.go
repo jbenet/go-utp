@@ -542,7 +542,7 @@ func (c *UTPConn) processPacket(p packet) bool {
 		}
 		ack = true
 		c.recvbuf.push(p)
-		for _, s := range c.recvbuf.sequence() {
+		for _, s := range c.recvbuf.fetchSequence() {
 			c.ack = s.header.seq
 			switch s.header.typ {
 			case st_data:
