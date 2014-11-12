@@ -368,13 +368,16 @@ func (c *UTPConn) loop() {
 				c.sendPacket(outgoingPacket{st_reset, nil, nil})
 				c.close()
 			} else {
-				c.stat.packetTimedOuts++
-				c.maxWindow /= 2
-				if c.maxWindow < mtu {
-					c.maxWindow = mtu
-				}
-				for _, p := range c.sendbuf.sequence() {
-					c.resendPacket(p)
+				t, err := c.sendbuf.frontPushedTime()
+				if err == nil && time.Now().Sub(t) > time.Duration(c.rto)*time.Millisecond {
+					c.stat.packetTimedOuts++
+					c.maxWindow /= 2
+					if c.maxWindow < mtu {
+						c.maxWindow = mtu
+					}
+					for _, p := range c.sendbuf.sequence() {
+						c.resendPacket(p)
+					}
 				}
 			}
 		case d := <-c.keepalivech:
