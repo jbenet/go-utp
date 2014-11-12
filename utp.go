@@ -15,7 +15,7 @@ const (
 	ext_selective_ack = 1
 
 	header_size = 20
-	mtu         = 1400
+	mtu         = 2800
 	mss         = mtu - header_size
 	window_size = 100
 
