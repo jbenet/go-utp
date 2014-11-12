@@ -27,6 +27,7 @@ func (r RandReader) Read(p []byte) (n int, err error) {
 func main() {
 	var l = flag.Int("c", 10485760, "Payload length (bytes)")
 	var h = flag.Bool("h", false, "Human readable")
+	var s = flag.Bool("s", false, "Stream mode(Low memory usage, but Slow)")
 	flag.Parse()
 
 	defer profile.Start(profile.CPUProfile).Stop()
@@ -37,7 +38,7 @@ func main() {
 		fmt.Printf("Payload: %d\n", *l)
 	}
 
-	c2s := c2s(int64(*l))
+	c2s := c2s(int64(*l), *s)
 	n, p := humanize.ComputeSI(c2s)
 	if *h {
 		fmt.Printf("C2S: %f%sbps\n", n, p)
@@ -45,7 +46,7 @@ func main() {
 		fmt.Printf("C2S: %f\n", c2s)
 	}
 
-	s2c := s2c(int64(*l))
+	s2c := s2c(int64(*l), *s)
 	n, p = humanize.ComputeSI(s2c)
 	if *h {
 		fmt.Printf("S2C: %f%sbps\n", n, p)
@@ -63,7 +64,7 @@ func main() {
 	}
 }
 
-func c2s(l int64) float64 {
+func c2s(l int64, stream bool) float64 {
 	ln, err := utp.Listen("utp", "127.0.0.1:0")
 	if err != nil {
 		log.Fatal(err)
@@ -94,20 +95,45 @@ func c2s(l int64) float64 {
 	rch := make(chan int)
 
 	sendHash := md5.New()
-	go func() {
-		defer c.Close()
-		io.Copy(io.MultiWriter(c, sendHash), io.LimitReader(RandReader{}, l))
-	}()
-
 	readHash := md5.New()
-	go func() {
-		io.Copy(readHash, s)
-		rch <- 0
-	}()
 
-	start := time.Now()
-	<-rch
-	bps := float64(l*8) / (float64(time.Now().Sub(start)) / float64(time.Second))
+	var bps float64
+	if stream {
+		go func() {
+			defer c.Close()
+			io.Copy(io.MultiWriter(c, sendHash), io.LimitReader(RandReader{}, l))
+		}()
+
+		go func() {
+			io.Copy(readHash, s)
+			rch <- 0
+		}()
+
+		start := time.Now()
+		<-rch
+		bps = float64(l*8) / (float64(time.Now().Sub(start)) / float64(time.Second))
+
+	} else {
+		var sendBuf, readBuf bytes.Buffer
+		io.Copy(io.MultiWriter(&sendBuf, sendHash), io.LimitReader(RandReader{}, l))
+
+		go func() {
+			defer c.Close()
+			io.Copy(c, &sendBuf)
+		}()
+
+		go func() {
+			io.Copy(&readBuf, s)
+			rch <- 0
+		}()
+
+		start := time.Now()
+		<-rch
+		bps = float64(l*8) / (float64(time.Now().Sub(start)) / float64(time.Second))
+
+		io.Copy(sendHash, &sendBuf)
+		io.Copy(readHash, &readBuf)
+	}
 
 	if !bytes.Equal(sendHash.Sum(nil), readHash.Sum(nil)) {
 		log.Fatal("Broken payload")
@@ -116,7 +142,7 @@ func c2s(l int64) float64 {
 	return bps
 }
 
-func s2c(l int64) float64 {
+func s2c(l int64, stream bool) float64 {
 	ln, err := utp.Listen("utp", "127.0.0.1:0")
 	if err != nil {
 		log.Fatal(err)
@@ -147,20 +173,46 @@ func s2c(l int64) float64 {
 	rch := make(chan int)
 
 	sendHash := md5.New()
-	go func() {
-		defer s.Close()
-		io.Copy(io.MultiWriter(s, sendHash), io.LimitReader(RandReader{}, l))
-	}()
-
 	readHash := md5.New()
-	go func() {
-		io.Copy(readHash, c)
-		rch <- 0
-	}()
 
-	start := time.Now()
-	<-rch
-	bps := float64(l*8) / (float64(time.Now().Sub(start)) / float64(time.Second))
+	var bps float64
+
+	if stream {
+		go func() {
+			defer s.Close()
+			io.Copy(io.MultiWriter(s, sendHash), io.LimitReader(RandReader{}, l))
+		}()
+
+		go func() {
+			io.Copy(readHash, c)
+			rch <- 0
+		}()
+
+		start := time.Now()
+		<-rch
+		bps = float64(l*8) / (float64(time.Now().Sub(start)) / float64(time.Second))
+
+	} else {
+		var sendBuf, readBuf bytes.Buffer
+		io.Copy(io.MultiWriter(&sendBuf, sendHash), io.LimitReader(RandReader{}, l))
+
+		go func() {
+			defer s.Close()
+			io.Copy(s, &sendBuf)
+		}()
+
+		go func() {
+			io.Copy(&readBuf, c)
+			rch <- 0
+		}()
+
+		start := time.Now()
+		<-rch
+		bps = float64(l*8) / (float64(time.Now().Sub(start)) / float64(time.Second))
+
+		io.Copy(sendHash, &sendBuf)
+		io.Copy(readHash, &readBuf)
+	}
 
 	if !bytes.Equal(sendHash.Sum(nil), readHash.Sum(nil)) {
 		log.Fatal("Broken payload")
