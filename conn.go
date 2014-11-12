@@ -373,12 +373,11 @@ func (c *UTPConn) loop() {
 				c.close()
 			} else {
 				c.stat.packetTimedOuts++
-				p, err := c.sendbuf.first()
-				if err == nil {
-					c.maxWindow /= 2
-					if c.maxWindow < mtu {
-						c.maxWindow = mtu
-					}
+				c.maxWindow /= 2
+				if c.maxWindow < mtu {
+					c.maxWindow = mtu
+				}
+				for _, p := range c.sendbuf.sequence() {
 					c.resendPacket(p)
 				}
 			}
