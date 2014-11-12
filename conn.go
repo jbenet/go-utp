@@ -108,7 +108,7 @@ func dial(n string, laddr, raddr *UTPAddr, timeout time.Duration) (*UTPConn, err
 		ulog.Printf(1, "Conn(%v): Connected", c.LocalAddr())
 		return c, nil
 	case <-t:
-		c.closed()
+		c.quitch <- 0
 		return nil, &timeoutError{}
 	}
 }
