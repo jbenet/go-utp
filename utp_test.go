@@ -412,6 +412,55 @@ func TestUnmarshalShortPacket(t *testing.T) {
 	}
 }
 
+func TestWriteOnClosedChannel(t *testing.T) {
+	ln, err := Listen("utp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+
+	c, err := DialUTPTimeout("utp", nil, ln.Addr().(*UTPAddr), 200*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	go func() {
+		for {
+			_, err := c.Write([]byte{100})
+			if err != nil {
+				return
+			}
+		}
+	}()
+
+	c.Close()
+}
+
+func TestReadOnClosedChannel(t *testing.T) {
+	ln, err := Listen("utp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+
+	c, err := DialUTPTimeout("utp", nil, ln.Addr().(*UTPAddr), 200*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	go func() {
+		for {
+			var buf [16]byte
+			_, err := c.Read(buf[:])
+			if err != nil {
+				return
+			}
+		}
+	}()
+
+	c.Close()
+}
+
 func TestPacketBuffer(t *testing.T) {
 	size := 12
 	b := newPacketBuffer(12, 1)

@@ -23,7 +23,7 @@ type UTPConn struct {
 
 	exitch   chan int
 	outch    chan *outgoingPacket
-	outchch  chan chan *outgoingPacket
+	outchch  chan int
 	sendch   chan *outgoingPacket
 	recvch   chan *packet
 	winch    chan uint32
@@ -31,7 +31,7 @@ type UTPConn struct {
 	activech chan bool
 
 	readch      chan []byte
-	readchch    chan chan []byte
+	readchch    chan int
 	connch      chan error
 	finch       chan int
 	closech     chan<- uint16
@@ -122,14 +122,17 @@ func newUTPConn() *UTPConn {
 		rto:       int64(rto),
 
 		exitch:   make(chan int),
-		outchch:  make(chan chan *outgoingPacket),
+		outchch:  make(chan int),
 		sendch:   make(chan *outgoingPacket, 1),
 		recvch:   make(chan *packet, 2),
 		winch:    make(chan uint32, 1),
 		quitch:   make(chan int),
 		activech: make(chan bool),
 
-		readchch: make(chan chan []byte),
+		outch:  make(chan *outgoingPacket, 1),
+		readch: make(chan []byte, 1),
+
+		readchch: make(chan int),
 		connch:   make(chan error, 1),
 		finch:    make(chan int, 1),
 
@@ -178,6 +181,8 @@ func (c *UTPConn) Read(b []byte) (int, error) {
 		}
 
 		select {
+		case <-c.readchch:
+			return 0, io.EOF
 		case b := <-c.readch:
 			if b == nil {
 				return 0, io.EOF
@@ -202,11 +207,12 @@ func (c *UTPConn) Write(b []byte) (int, error) {
 	for {
 		var payload [mss]byte
 		l := copy(payload[:], b[wrote:])
-		if outch, ok := <-c.outchch; ok {
-			outch <- &outgoingPacket{st_data, nil, payload[:l]}
-		} else {
+		select {
+		case c.outch <- &outgoingPacket{st_data, nil, payload[:l]}:
+		case <-c.outchch:
 			return 0, errors.New("use of closed network connection")
 		}
+
 		wrote += uint64(l)
 		ulog.Printf(4, "Conn(%v): Write %d/%d bytes", c.LocalAddr(), wrote, len(b))
 		if l < mss {
@@ -290,20 +296,13 @@ func (c *UTPConn) loop() {
 	var lastReceived time.Time
 	var keepalive <-chan time.Time
 
-	c.outch = make(chan *outgoingPacket, 1)
-	c.readch = make(chan []byte, 1)
-
 	go func() {
 		for {
 			select {
-			case c.outchch <- c.outch:
-			case c.readchch <- c.readch:
 			case c.activech <- true:
 			case <-c.exitch:
 				close(c.outchch)
-				close(c.outch)
 				close(c.readchch)
-				close(c.readch)
 				close(c.activech)
 				return
 			}
@@ -660,8 +659,9 @@ var state_closed state = state{
 
 var state_closing state = state{
 	data: func(c *UTPConn, p packet) {
-		if readch, ok := <-c.readchch; ok {
-			readch <- p.payload
+		select {
+		case c.readch <- p.payload:
+		case <-c.readchch:
 		}
 		if c.recvbuf.empty() && c.sendbuf.empty() {
 			c.close()
@@ -685,8 +685,9 @@ var state_syn_sent state = state{
 
 var state_connected state = state{
 	data: func(c *UTPConn, p packet) {
-		if readch, ok := <-c.readchch; ok {
-			readch <- p.payload
+		select {
+		case c.readch <- p.payload:
+		case <-c.readchch:
 		}
 	},
 	fin: func(c *UTPConn, p packet) {
@@ -697,11 +698,12 @@ var state_connected state = state{
 		}
 	},
 	exit: func(c *UTPConn) {
-		if outch, ok := <-c.outchch; ok {
-			go func() {
-				outch <- &outgoingPacket{st_fin, nil, nil}
-			}()
-		}
+		go func() {
+			select {
+			case c.outch <- &outgoingPacket{st_fin, nil, nil}:
+			case <-c.outchch:
+			}
+		}()
 		c.fin_sent()
 	},
 	active: true,
