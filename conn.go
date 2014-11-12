@@ -198,20 +198,16 @@ func (c *UTPConn) Write(b []byte) (int, error) {
 		return 0, syscall.EINVAL
 	}
 
-	var wrote int
-	buf := bytes.NewBuffer(append([]byte(nil), b...))
+	var wrote uint64
 	for {
 		var payload [mss]byte
-		l, err := buf.Read(payload[:])
-		if err != nil {
-			break
-		}
+		l := copy(payload[:], b[wrote:])
 		if outch, ok := <-c.outchch; ok {
 			outch <- &outgoingPacket{st_data, nil, payload[:l]}
 		} else {
 			return 0, errors.New("use of closed network connection")
 		}
-		wrote += l
+		wrote += uint64(l)
 		ulog.Printf(4, "Conn(%v): Write %d/%d bytes", c.LocalAddr(), wrote, len(b))
 		if l < mss {
 			break
