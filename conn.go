@@ -28,7 +28,7 @@ type UTPConn struct {
 	recvch   chan *packet
 	winch    chan uint32
 	quitch   chan int
-	activech chan bool
+	activech chan int
 
 	readch      chan []byte
 	readchch    chan int
@@ -127,7 +127,7 @@ func newUTPConn() *UTPConn {
 		recvch:   make(chan *packet, 2),
 		winch:    make(chan uint32, 1),
 		quitch:   make(chan int),
-		activech: make(chan bool),
+		activech: make(chan int),
 
 		outch:  make(chan *outgoingPacket, 1),
 		readch: make(chan []byte, 1),
@@ -152,7 +152,9 @@ func (c *UTPConn) Close() error {
 		return syscall.EINVAL
 	}
 
-	if <-c.activech {
+	select {
+	case <-c.activech:
+	default:
 		c.quitch <- 0
 		ulog.Printf(2, "Conn(%v): Wait for close", c.LocalAddr())
 		<-c.finch
@@ -256,7 +258,9 @@ func (c *UTPConn) SetKeepAlive(d time.Duration) error {
 	if !c.ok() {
 		return syscall.EINVAL
 	}
-	if <-c.activech {
+	select {
+	case <-c.activech:
+	default:
 		c.keepalivech <- d
 	}
 	return nil
@@ -297,16 +301,10 @@ func (c *UTPConn) loop() {
 	var keepalive <-chan time.Time
 
 	go func() {
-		for {
-			select {
-			case c.activech <- true:
-			case <-c.exitch:
-				close(c.outchch)
-				close(c.readchch)
-				close(c.activech)
-				return
-			}
-		}
+		<-c.exitch
+		close(c.outchch)
+		close(c.readchch)
+		close(c.activech)
 	}()
 
 	go func() {
