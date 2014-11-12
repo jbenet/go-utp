@@ -167,16 +167,6 @@ func (c *UTPConn) Read(b []byte) (int, error) {
 			return 0, &timeoutError{}
 		}
 	}
-
-	select {
-	case b := <-c.readch:
-		_, err := c.readbuf.Write(b)
-		if err != nil {
-			return 0, err
-		}
-	default:
-	}
-
 	return c.readbuf.Read(b)
 }
 
