@@ -21,17 +21,18 @@ type UTPConn struct {
 
 	state state
 
-	exitch   chan int
-	outch    chan *outgoingPacket
-	outchch  chan int
-	sendch   chan *outgoingPacket
-	recvch   chan *packet
-	winch    chan uint32
-	quitch   chan int
-	activech chan int
-
+	exitch      chan int
+	outch       chan outgoingPacket
+	outchch     chan int
+	sendch      chan outgoingPacket
+	sendchch    chan int
+	recvch      chan packet
+	recvchch    chan int
 	readch      chan []byte
 	readchch    chan int
+	winch       chan uint32
+	quitch      chan int
+	activech    chan int
 	connch      chan error
 	finch       chan int
 	closech     chan<- uint16
@@ -92,7 +93,11 @@ func dial(n string, laddr, raddr *UTPAddr, timeout time.Duration) (*UTPConn, err
 	go c.recv()
 	go c.loop()
 
-	c.sendch <- &outgoingPacket{st_syn, nil, nil}
+	select {
+	case c.sendch <- outgoingPacket{st_syn, nil, nil}:
+	case <-c.sendchch:
+		return nil, errors.New("use of closed network connection")
+	}
 
 	var t <-chan time.Time
 	if timeout != 0 {
@@ -122,16 +127,16 @@ func newUTPConn() *UTPConn {
 		rto:       int64(rto),
 
 		exitch:   make(chan int),
+		outch:    make(chan outgoingPacket, 1),
 		outchch:  make(chan int),
-		sendch:   make(chan *outgoingPacket, 1),
-		recvch:   make(chan *packet, 2),
+		sendch:   make(chan outgoingPacket, 1),
+		sendchch: make(chan int),
+		recvch:   make(chan packet, 2),
+		recvchch: make(chan int),
 		winch:    make(chan uint32, 1),
 		quitch:   make(chan int),
 		activech: make(chan int),
-
-		outch:  make(chan *outgoingPacket, 1),
-		readch: make(chan []byte, 1),
-
+		readch:   make(chan []byte, 1),
 		readchch: make(chan int),
 		connch:   make(chan error, 1),
 		finch:    make(chan int, 1),
@@ -210,7 +215,7 @@ func (c *UTPConn) Write(b []byte) (int, error) {
 		var payload [mss]byte
 		l := copy(payload[:], b[wrote:])
 		select {
-		case c.outch <- &outgoingPacket{st_data, nil, payload[:l]}:
+		case c.outch <- outgoingPacket{st_data, nil, payload[:l]}:
 		case <-c.outchch:
 			return 0, errors.New("use of closed network connection")
 		}
@@ -290,7 +295,11 @@ func (c *UTPConn) recv() {
 		}
 		p, err := readPacket(buf[:len])
 		if err == nil {
-			c.recvch <- &p
+			select {
+			case c.recvch <- p:
+			case <-c.recvchch:
+				return
+			}
 		}
 	}
 }
@@ -304,6 +313,8 @@ func (c *UTPConn) loop() {
 		<-c.exitch
 		close(c.outchch)
 		close(c.readchch)
+		close(c.sendchch)
+		close(c.recvchch)
 		close(c.activech)
 	}()
 
@@ -313,12 +324,14 @@ func (c *UTPConn) loop() {
 			if window >= mtu {
 				select {
 				case b := <-c.outch:
-					if b == nil {
-						c.sendch <- nil
+					select {
+					case c.sendch <- b:
+						window -= mtu
+					case <-c.sendchch:
 						return
 					}
-					c.sendch <- b
-					window -= mtu
+				case <-c.outchch:
+					return
 				case w := <-c.winch:
 					window = w
 				}
@@ -330,34 +343,36 @@ func (c *UTPConn) loop() {
 
 	for {
 		select {
+		case <-c.sendchch:
+			sendExit = true
+		default:
+		}
+		select {
+		case <-c.recvchch:
+			recvExit = true
+		default:
+		}
+		select {
 		case p := <-c.recvch:
-			if p != nil {
-				ack := c.processPacket(*p)
-				lastReceived = time.Now()
-				if ack {
-					out := outgoingPacket{st_state, nil, nil}
-					selack := c.sendbuf.generateSelectiveACK()
-					if len(selack) > 0 {
-						out.ext = []extension{
-							extension{
-								typ:     ext_selective_ack,
-								payload: selack,
-							},
-						}
-						c.stat.sentSelectiveACKs++
+			ack := c.processPacket(p)
+			lastReceived = time.Now()
+			if ack {
+				out := outgoingPacket{st_state, nil, nil}
+				selack := c.sendbuf.generateSelectiveACK()
+				if len(selack) > 0 {
+					out.ext = []extension{
+						extension{
+							typ:     ext_selective_ack,
+							payload: selack,
+						},
 					}
-					c.sendPacket(out)
+					c.stat.sentSelectiveACKs++
 				}
-			} else {
-				recvExit = true
+				c.sendPacket(out)
 			}
 
 		case b := <-c.sendch:
-			if b != nil {
-				c.sendPacket(*b)
-			} else {
-				sendExit = true
-			}
+			c.sendPacket(b)
 
 		case <-time.After(time.Duration(c.rto) * time.Millisecond):
 			if !c.state.active && time.Now().Sub(lastReceived) > reset_timeout {
@@ -593,7 +608,6 @@ func (c *UTPConn) makePacket(b outgoingPacket) *packet {
 
 func (c *UTPConn) close() {
 	if !c.state.closed {
-		c.recvch <- nil
 		close(c.exitch)
 		close(c.finch)
 		c.closed()
@@ -698,7 +712,7 @@ var state_connected state = state{
 	exit: func(c *UTPConn) {
 		go func() {
 			select {
-			case c.outch <- &outgoingPacket{st_fin, nil, nil}:
+			case c.outch <- outgoingPacket{st_fin, nil, nil}:
 			case <-c.outchch:
 			}
 		}()

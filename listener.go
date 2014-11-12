@@ -114,7 +114,10 @@ func (l *UTPListener) processPacket(p packet, addr net.Addr) {
 	switch p.header.typ {
 	case st_data, st_fin, st_state, st_reset:
 		if c, ok := l.conns[p.header.id]; ok {
-			c.recvch <- &p
+			select {
+			case c.recvch <- p:
+			case <-c.recvchch:
+			}
 		}
 	case st_syn:
 		if l.closed {
@@ -138,7 +141,10 @@ func (l *UTPListener) processPacket(p packet, addr net.Addr) {
 			c.sendbuf = newPacketBuffer(window_size, seq)
 
 			go c.loop()
-			c.recvch <- &p
+			select {
+			case c.recvch <- p:
+			case <-c.recvchch:
+			}
 
 			l.conns[sid] = c
 			ulog.Printf(2, "Listener(%v): New incoming connection #%d from %v (alive: %d)", l.Conn.LocalAddr(), sid, addr, len(l.conns))
