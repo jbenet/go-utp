@@ -3,6 +3,7 @@ package utp
 import (
 	"errors"
 	"math"
+	"time"
 )
 
 type packetBuffer struct {
@@ -12,8 +13,9 @@ type packetBuffer struct {
 }
 
 type packetBufferNode struct {
-	p    *packet
-	next *packetBufferNode
+	p      *packet
+	next   *packetBufferNode
+	pushed time.Time
 }
 
 func newPacketBuffer(size, begin int) *packetBuffer {
@@ -39,6 +41,7 @@ func (b *packetBuffer) push(p packet) error {
 	for {
 		if i == int(p.header.seq) {
 			n.p = &p
+			n.pushed = time.Now()
 			return nil
 		} else if n.next == nil {
 			n.next = &packetBufferNode{}
@@ -83,9 +86,16 @@ func (b *packetBuffer) all() []packet {
 
 func (b *packetBuffer) first() (packet, error) {
 	if b.root == nil || b.root.p == nil {
-		return packet{}, errors.New("buffer is empty")
+		return packet{}, errors.New("no first packet")
 	}
 	return *b.root.p, nil
+}
+
+func (b *packetBuffer) frontPushedTime() (time.Time, error) {
+	if b.root == nil || b.root.p == nil {
+		return time.Time{}, errors.New("no first packet")
+	}
+	return b.root.pushed, nil
 }
 
 func (b *packetBuffer) fetchSequence() []packet {
