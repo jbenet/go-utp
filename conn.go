@@ -21,7 +21,6 @@ type UTPConn struct {
 
 	state state
 
-	exitch      chan int
 	outch       chan outgoingPacket
 	outchch     chan int
 	sendch      chan outgoingPacket
@@ -126,7 +125,6 @@ func newUTPConn() *UTPConn {
 		maxWindow: mtu,
 		rto:       int64(rto),
 
-		exitch:   make(chan int),
 		outch:    make(chan outgoingPacket, 1),
 		outchch:  make(chan int),
 		sendch:   make(chan outgoingPacket, 1),
@@ -188,8 +186,6 @@ func (c *UTPConn) Read(b []byte) (int, error) {
 		}
 
 		select {
-		case <-c.readchch:
-			return 0, io.EOF
 		case b := <-c.readch:
 			if b == nil {
 				return 0, io.EOF
@@ -197,6 +193,22 @@ func (c *UTPConn) Read(b []byte) (int, error) {
 			_, err := c.readbuf.Write(b)
 			if err != nil {
 				return 0, err
+			}
+		case <-c.readchch:
+		loop:
+			for {
+				select {
+					case b := <-c.readch:
+					_, err := c.readbuf.Write(b)
+					if err != nil {
+						return 0, err
+					}
+					default:
+						break loop
+				}
+			}
+			if c.readbuf.Len() == 0 {
+				return 0, io.EOF
 			}
 		case <-timeout:
 			return 0, &timeoutError{}
@@ -308,15 +320,6 @@ func (c *UTPConn) loop() {
 	var recvExit, sendExit bool
 	var lastReceived time.Time
 	var keepalive <-chan time.Time
-
-	go func() {
-		<-c.exitch
-		close(c.outchch)
-		close(c.readchch)
-		close(c.sendchch)
-		close(c.recvchch)
-		close(c.activech)
-	}()
 
 	go func() {
 		var window uint32 = window_size * mtu
@@ -608,7 +611,11 @@ func (c *UTPConn) makePacket(b outgoingPacket) *packet {
 
 func (c *UTPConn) close() {
 	if !c.state.closed {
-		close(c.exitch)
+		close(c.outchch)
+		close(c.readchch)
+		close(c.sendchch)
+		close(c.recvchch)
+		close(c.activech)
 		close(c.finch)
 		c.closed()
 
