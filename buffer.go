@@ -72,7 +72,7 @@ func (b *packetBuffer) compact() {
 }
 
 func (b *packetBuffer) all() []packet {
-	var a []packet
+	a := make([]packet, 0, b.size)
 	for p := b.root; p != nil; p = p.next {
 		if p.p != nil {
 			a = append(a, *p.p)
@@ -89,7 +89,7 @@ func (b *packetBuffer) first() (packet, error) {
 }
 
 func (b *packetBuffer) sequence() []packet {
-	var a []packet
+	a := make([]packet, 0, b.size)
 	for ; b.root != nil && b.root.p != nil; b.root = b.root.next {
 		a = append(a, *b.root.p)
 		b.begin = (b.begin + 1) % (math.MaxUint16 + 1)
@@ -114,7 +114,7 @@ func (b *packetBuffer) generateSelectiveACK() []byte {
 		return nil
 	}
 
-	var ack []byte
+	ack := make([]byte, 0, b.size)
 	var bit uint
 	var octet byte
 	for p := b.root.next; p != nil; p = p.next {
