@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"math/rand"
+	"sync"
 	"time"
 
 	"github.com/davecheney/profile"
@@ -24,9 +25,28 @@ func (r RandReader) Read(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
+type ByteCounter struct {
+	n     int64
+	mutex sync.RWMutex
+}
+
+func (b *ByteCounter) Write(p []byte) (n int, err error) {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	b.n += int64(len(p))
+	return len(p), nil
+}
+
+func (b *ByteCounter) Length() int64 {
+	b.mutex.RLock()
+	defer b.mutex.RUnlock()
+	return b.n
+}
+
+var h = flag.Bool("h", false, "Human readable")
+
 func main() {
 	var l = flag.Int("c", 10485760, "Payload length (bytes)")
-	var h = flag.Bool("h", false, "Human readable")
 	var s = flag.Bool("s", false, "Stream mode(Low memory usage, but Slow)")
 	flag.Parse()
 
@@ -96,17 +116,34 @@ func c2s(l int64, stream bool) float64 {
 
 	sendHash := md5.New()
 	readHash := md5.New()
+	counter := ByteCounter{}
 
 	var bps float64
 	if stream {
 		go func() {
 			defer c.Close()
-			io.Copy(io.MultiWriter(c, sendHash), io.LimitReader(RandReader{}, l))
+			io.Copy(io.MultiWriter(c, sendHash, &counter), io.LimitReader(RandReader{}, l))
 		}()
 
 		go func() {
 			io.Copy(readHash, s)
-			rch <- 0
+			close(rch)
+		}()
+
+		go func() {
+			for {
+				select {
+				case <-time.After(time.Second):
+					if *h {
+						fmt.Printf("\r <--> %s    ", humanize.IBytes(uint64(counter.Length())))
+					} else {
+						fmt.Printf("\r <--> %d    ", counter.Length())
+					}
+				case <-rch:
+					fmt.Printf("\r")
+					return
+				}
+			}
 		}()
 
 		start := time.Now()
@@ -174,18 +211,35 @@ func s2c(l int64, stream bool) float64 {
 
 	sendHash := md5.New()
 	readHash := md5.New()
+	counter := ByteCounter{}
 
 	var bps float64
 
 	if stream {
 		go func() {
 			defer s.Close()
-			io.Copy(io.MultiWriter(s, sendHash), io.LimitReader(RandReader{}, l))
+			io.Copy(io.MultiWriter(s, sendHash, &counter), io.LimitReader(RandReader{}, l))
 		}()
 
 		go func() {
 			io.Copy(readHash, c)
-			rch <- 0
+			close(rch)
+		}()
+
+		go func() {
+			for {
+				select {
+				case <-time.After(time.Second):
+					if *h {
+						fmt.Printf("\r <--> %s    ", humanize.IBytes(uint64(counter.Length())))
+					} else {
+						fmt.Printf("\r <--> %d    ", counter.Length())
+					}
+				case <-rch:
+					fmt.Printf("\r")
+					return
+				}
+			}
 		}()
 
 		start := time.Now()
