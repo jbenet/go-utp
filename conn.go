@@ -107,7 +107,7 @@ func newUTPConn() *UTPConn {
 		exitch:   make(chan int),
 		outchch:  make(chan chan *outgoingPacket),
 		sendch:   make(chan *outgoingPacket, 1),
-		recvch:   make(chan *packet, 1),
+		recvch:   make(chan *packet, 2),
 		winch:    make(chan uint32, 1),
 		quitch:   make(chan int),
 		activech: make(chan bool),
