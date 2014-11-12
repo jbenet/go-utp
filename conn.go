@@ -114,7 +114,7 @@ func dial(n string, laddr, raddr *UTPAddr, timeout time.Duration) (*UTPConn, err
 }
 
 func newUTPConn() *UTPConn {
-	rto := 1000
+	rto := 60
 
 	return &UTPConn{
 		minRtt:    math.MaxInt64,
