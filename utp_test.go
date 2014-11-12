@@ -432,3 +432,74 @@ func TestPacketBufferBoundary(t *testing.T) {
 		}
 	}
 }
+
+func BenchmarkPacketMarshalBinary(t *testing.B) {
+	h := header{
+		typ:  st_fin,
+		ver:  version,
+		id:   100,
+		t:    50000,
+		diff: 10000,
+		wnd:  65535,
+		seq:  100,
+		ack:  200,
+	}
+
+	e := []extension{
+		extension{
+			typ:     ext_selective_ack,
+			payload: []byte{0, 1, 0, 1},
+		},
+		extension{
+			typ:     ext_selective_ack,
+			payload: []byte{100, 0, 200, 0},
+		},
+	}
+
+	p := packet{
+		header:  h,
+		ext:     e,
+		payload: []byte("abcdefg"),
+	}
+
+	for i := 0; i < t.N; i++ {
+		p.MarshalBinary()
+	}
+}
+
+func BenchmarkPacketUnmarshalBinary(t *testing.B) {
+	h := header{
+		typ:  st_fin,
+		ver:  version,
+		id:   100,
+		t:    50000,
+		diff: 10000,
+		wnd:  65535,
+		seq:  100,
+		ack:  200,
+	}
+
+	e := []extension{
+		extension{
+			typ:     ext_selective_ack,
+			payload: []byte{0, 1, 0, 1},
+		},
+		extension{
+			typ:     ext_selective_ack,
+			payload: []byte{100, 0, 200, 0},
+		},
+	}
+
+	p := packet{
+		header:  h,
+		ext:     e,
+		payload: []byte("abcdefg"),
+	}
+
+	b, _ := p.MarshalBinary()
+	p2 := packet{}
+
+	for i := 0; i < t.N; i++ {
+		p2.UnmarshalBinary(b)
+	}
+}
