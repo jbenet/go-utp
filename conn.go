@@ -53,6 +53,9 @@ type statistics struct {
 	packetTimedOuts        int
 	sentSelectiveACKs      int
 	receivedSelectiveACKs  int
+
+	rtoSum   int
+	rtoCount int
 }
 
 func dial(n string, laddr, raddr *UTPAddr, timeout time.Duration) (*UTPConn, error) {
@@ -111,10 +114,12 @@ func dial(n string, laddr, raddr *UTPAddr, timeout time.Duration) (*UTPConn, err
 }
 
 func newUTPConn() *UTPConn {
+	rto := 1000
+
 	return &UTPConn{
 		minRtt:    math.MaxInt64,
 		maxWindow: mtu,
-		rto:       1000,
+		rto:       int64(rto),
 
 		exitch:   make(chan int),
 		outchch:  make(chan chan *outgoingPacket),
@@ -129,6 +134,11 @@ func newUTPConn() *UTPConn {
 		finch:    make(chan int, 1),
 
 		keepalivech: make(chan time.Duration),
+
+		stat: statistics{
+			rtoSum:   rto,
+			rtoCount: 1,
+		},
 	}
 }
 
@@ -476,6 +486,8 @@ func (c *UTPConn) processPacket(p packet) bool {
 				if c.rto < 500 {
 					c.rto = 500
 				}
+				c.stat.rtoSum += int(c.rto)
+				c.stat.rtoCount++
 			}
 
 			if c.diff != 0 {
@@ -604,6 +616,7 @@ func (c *UTPConn) close() {
 		ulog.Printf(1, "Conn(%v): * PacketTimedOuts: %d", c.LocalAddr(), c.stat.packetTimedOuts)
 		ulog.Printf(1, "Conn(%v): * SentSelectiveACKs: %d", c.LocalAddr(), c.stat.sentSelectiveACKs)
 		ulog.Printf(1, "Conn(%v): * ReceivedSelectiveACKs: %d", c.LocalAddr(), c.stat.receivedSelectiveACKs)
+		ulog.Printf(1, "Conn(%v): * AverageRTO: %d", c.LocalAddr(), c.stat.rtoSum/c.stat.rtoCount)
 	}
 }
 
