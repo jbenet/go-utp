@@ -483,8 +483,10 @@ func (c *UTPConn) processPacket(p packet) bool {
 					c.rtt = c.rtt - c.rtt/8 + e/8
 				}
 				c.rto = c.rtt + c.rttVar*4
-				if c.rto < 500 {
-					c.rto = 500
+				if c.rto < 60 {
+					c.rto = 60
+				} else if c.rto > 1000 {
+					c.rto = 1000
 				}
 				c.stat.rtoSum += int(c.rto)
 				c.stat.rtoCount++
