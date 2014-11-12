@@ -106,9 +106,9 @@ func newUTPConn() *UTPConn {
 
 		exitch:   make(chan int),
 		outchch:  make(chan chan *outgoingPacket),
-		sendch:   make(chan *outgoingPacket, 10),
-		recvch:   make(chan *packet, 2),
-		winch:    make(chan uint32, 2),
+		sendch:   make(chan *outgoingPacket, 1),
+		recvch:   make(chan *packet, 1),
+		winch:    make(chan uint32, 1),
 		quitch:   make(chan int),
 		activech: make(chan bool),
 
@@ -281,8 +281,8 @@ func (c *UTPConn) loop() {
 	var lastReceived time.Time
 	var keepalive <-chan time.Time
 
-	c.outch = make(chan *outgoingPacket, 10)
-	c.readch = make(chan []byte, 100)
+	c.outch = make(chan *outgoingPacket, 1)
+	c.readch = make(chan []byte, 1)
 
 	go func() {
 		for {
