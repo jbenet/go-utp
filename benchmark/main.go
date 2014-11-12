@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/davecheney/profile"
 	"github.com/dustin/go-humanize"
 	"github.com/h2so5/utp"
 )
@@ -17,6 +18,8 @@ func main() {
 	var l = flag.Int("c", 10485760, "Payload length (bytes)")
 	var h = flag.Bool("h", false, "Human readable")
 	flag.Parse()
+
+	defer profile.Start(profile.CPUProfile).Stop()
 
 	payload := make([]byte, *l)
 	for i := range payload {
