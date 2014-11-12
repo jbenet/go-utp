@@ -1,18 +1,28 @@
 package main
 
 import (
+	"bytes"
+	"crypto/md5"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"math/rand"
-	"reflect"
 	"time"
 
 	"github.com/davecheney/profile"
 	"github.com/dustin/go-humanize"
 	"github.com/h2so5/utp"
 )
+
+type RandReader struct{}
+
+func (r RandReader) Read(p []byte) (n int, err error) {
+	for i := range p {
+		p[i] = byte(rand.Int())
+	}
+	return len(p), nil
+}
 
 func main() {
 	var l = flag.Int("c", 10485760, "Payload length (bytes)")
@@ -21,18 +31,13 @@ func main() {
 
 	defer profile.Start(profile.CPUProfile).Stop()
 
-	payload := make([]byte, *l)
-	for i := range payload {
-		payload[i] = byte(rand.Int())
-	}
-
 	if *h {
-		fmt.Printf("Payload: %s\n", humanize.IBytes(uint64(len(payload))))
+		fmt.Printf("Payload: %s\n", humanize.IBytes(uint64(*l)))
 	} else {
-		fmt.Printf("Payload: %d\n", len(payload))
+		fmt.Printf("Payload: %d\n", *l)
 	}
 
-	c2s := c2s(payload)
+	c2s := c2s(int64(*l))
 	n, p := humanize.ComputeSI(c2s)
 	if *h {
 		fmt.Printf("C2S: %f%sbps\n", n, p)
@@ -40,7 +45,7 @@ func main() {
 		fmt.Printf("C2S: %f\n", c2s)
 	}
 
-	s2c := s2c(payload)
+	s2c := s2c(int64(*l))
 	n, p = humanize.ComputeSI(s2c)
 	if *h {
 		fmt.Printf("S2C: %f%sbps\n", n, p)
@@ -58,7 +63,7 @@ func main() {
 	}
 }
 
-func c2s(payload []byte) float64 {
+func c2s(l int64) float64 {
 	ln, err := utp.Listen("utp", "127.0.0.1:0")
 	if err != nil {
 		log.Fatal(err)
@@ -86,30 +91,32 @@ func c2s(payload []byte) float64 {
 	defer s.Close()
 	ln.Close()
 
-	rch := make(chan []byte)
+	rch := make(chan int)
 
+	sendHash := md5.New()
 	go func() {
 		defer c.Close()
-		c.Write(payload[:])
+		io.Copy(io.MultiWriter(c, sendHash), io.LimitReader(RandReader{}, l))
 	}()
 
+	readHash := md5.New()
 	go func() {
-		b, _ := ioutil.ReadAll(s)
-		rch <- b
+		io.Copy(readHash, s)
+		rch <- 0
 	}()
 
 	start := time.Now()
-	r := <-rch
-	bps := float64(len(payload)*8) / (float64(time.Now().Sub(start)) / float64(time.Second))
+	<-rch
+	bps := float64(l*8) / (float64(time.Now().Sub(start)) / float64(time.Second))
 
-	if !reflect.DeepEqual(payload, r) {
+	if !bytes.Equal(sendHash.Sum(nil), readHash.Sum(nil)) {
 		log.Fatal("Broken payload")
 	}
 
 	return bps
 }
 
-func s2c(payload []byte) float64 {
+func s2c(l int64) float64 {
 	ln, err := utp.Listen("utp", "127.0.0.1:0")
 	if err != nil {
 		log.Fatal(err)
@@ -137,23 +144,25 @@ func s2c(payload []byte) float64 {
 	defer s.Close()
 	ln.Close()
 
-	rch := make(chan []byte)
+	rch := make(chan int)
 
+	sendHash := md5.New()
 	go func() {
 		defer s.Close()
-		s.Write(payload[:])
+		io.Copy(io.MultiWriter(s, sendHash), io.LimitReader(RandReader{}, l))
 	}()
 
+	readHash := md5.New()
 	go func() {
-		b, _ := ioutil.ReadAll(c)
-		rch <- b
+		io.Copy(readHash, c)
+		rch <- 0
 	}()
 
 	start := time.Now()
-	r := <-rch
-	bps := float64(len(payload)*8) / (float64(time.Now().Sub(start)) / float64(time.Second))
+	<-rch
+	bps := float64(l*8) / (float64(time.Now().Sub(start)) / float64(time.Second))
 
-	if !reflect.DeepEqual(payload, r) {
+	if !bytes.Equal(sendHash.Sum(nil), readHash.Sum(nil)) {
 		log.Fatal("Broken payload")
 	}
 
