@@ -658,7 +658,7 @@ var state_closed state = state{
 var state_closing state = state{
 	data: func(c *UTPConn, p packet) {
 		if readch, ok := <-c.readchch; ok {
-			readch <- append([]byte(nil), p.payload...)
+			readch <- p.payload
 		}
 		if c.recvbuf.empty() && c.sendbuf.empty() {
 			c.close()
@@ -683,7 +683,7 @@ var state_syn_sent state = state{
 var state_connected state = state{
 	data: func(c *UTPConn, p packet) {
 		if readch, ok := <-c.readchch; ok {
-			readch <- append([]byte(nil), p.payload...)
+			readch <- p.payload
 		}
 	},
 	fin: func(c *UTPConn, p packet) {
