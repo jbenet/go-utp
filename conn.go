@@ -41,6 +41,18 @@ type UTPConn struct {
 	readbuf bytes.Buffer
 	recvbuf *packetBuffer
 	sendbuf *packetBuffer
+
+	stat statistics
+}
+
+type statistics struct {
+	sentPackets            int
+	resentPackets          int
+	receivedPackets        int
+	receivedDuplicatedACKs int
+	packetTimedOuts        int
+	sentSelectiveACKs      int
+	receivedSelectiveACKs  int
 }
 
 func dial(n string, laddr, raddr *UTPAddr, timeout time.Duration) (*UTPConn, error) {
@@ -132,6 +144,7 @@ func (c *UTPConn) Close() error {
 		ulog.Printf(2, "Conn(%v): Wait for close", c.LocalAddr())
 		<-c.finch
 	}
+
 	return nil
 }
 
@@ -328,6 +341,7 @@ func (c *UTPConn) loop() {
 								payload: selack,
 							},
 						}
+						c.stat.sentSelectiveACKs++
 					}
 					c.sendPacket(out)
 				}
@@ -348,6 +362,7 @@ func (c *UTPConn) loop() {
 				c.sendPacket(outgoingPacket{st_reset, nil, nil})
 				c.close()
 			} else {
+				c.stat.packetTimedOuts++
 				p, err := c.sendbuf.first()
 				if err == nil {
 					c.maxWindow /= 2
@@ -383,6 +398,7 @@ func (c *UTPConn) sendPacket(b outgoingPacket) {
 	bin, err := p.MarshalBinary()
 	if err == nil {
 		ulog.Printf(3, "SEND %v -> %v: %v", c.Conn.LocalAddr(), c.raddr, p.String())
+		c.stat.sentPackets++
 		_, err = c.Conn.WriteTo(bin, c.raddr)
 		if err != nil {
 			return
@@ -397,6 +413,7 @@ func (c *UTPConn) resendPacket(p packet) {
 	bin, err := p.MarshalBinary()
 	if err == nil {
 		ulog.Printf(3, "RESEND %v -> %v: %v", c.Conn.LocalAddr(), c.raddr, p.String())
+		c.stat.resentPackets++
 		_, err = c.Conn.WriteTo(bin, c.raddr)
 		if err != nil {
 			return
@@ -424,6 +441,7 @@ func (c *UTPConn) processPacket(p packet) bool {
 	}
 
 	ulog.Printf(3, "RECV %v -> %v: %v", c.raddr, c.Conn.LocalAddr(), p.String())
+	c.stat.receivedPackets++
 
 	if p.header.typ == st_state {
 
@@ -431,7 +449,8 @@ func (c *UTPConn) processPacket(p packet) bool {
 		if err != nil && p.header.ack == f.header.seq {
 			for _, e := range p.ext {
 				if e.typ == ext_selective_ack {
-					ulog.Printf(0, "Conn(%v): Receive Selective ACK", c.LocalAddr())
+					ulog.Printf(3, "Conn(%v): Receive Selective ACK", c.LocalAddr())
+					c.stat.receivedSelectiveACKs++
 					c.sendbuf.processSelectiveACK(e.payload)
 				}
 			}
@@ -477,6 +496,7 @@ func (c *UTPConn) processPacket(p packet) bool {
 			c.dupAck++
 			if c.dupAck >= 2 {
 				ulog.Printf(3, "Conn(%v): Receive 3 duplicated acks: %d", c.LocalAddr(), p.header.ack)
+				c.stat.receivedDuplicatedACKs++
 				p, err := c.sendbuf.first()
 				if err == nil {
 					c.maxWindow /= 2
@@ -577,6 +597,13 @@ func (c *UTPConn) close() {
 		}
 
 		ulog.Printf(1, "Conn(%v): Closed", c.LocalAddr())
+		ulog.Printf(1, "Conn(%v): * SentPackets: %d", c.LocalAddr(), c.stat.sentPackets)
+		ulog.Printf(1, "Conn(%v): * ResentPackets: %d", c.LocalAddr(), c.stat.resentPackets)
+		ulog.Printf(1, "Conn(%v): * ReceivedPackets: %d", c.LocalAddr(), c.stat.receivedPackets)
+		ulog.Printf(1, "Conn(%v): * ReceivedDuplicatedACKs: %d", c.LocalAddr(), c.stat.receivedDuplicatedACKs)
+		ulog.Printf(1, "Conn(%v): * PacketTimedOuts: %d", c.LocalAddr(), c.stat.packetTimedOuts)
+		ulog.Printf(1, "Conn(%v): * SentSelectiveACKs: %d", c.LocalAddr(), c.stat.sentSelectiveACKs)
+		ulog.Printf(1, "Conn(%v): * ReceivedSelectiveACKs: %d", c.LocalAddr(), c.stat.receivedSelectiveACKs)
 	}
 }
 
