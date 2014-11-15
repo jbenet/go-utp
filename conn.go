@@ -19,7 +19,8 @@ type UTPConn struct {
 	diff, maxWindow                  uint32
 	rdeadline, wdeadline             time.Time
 
-	state state
+	state        state
+	lastTimedOut time.Time
 
 	outch       chan outgoingPacket
 	outchch     chan int
@@ -198,13 +199,13 @@ func (c *UTPConn) Read(b []byte) (int, error) {
 		loop:
 			for {
 				select {
-					case b := <-c.readch:
+				case b := <-c.readch:
 					_, err := c.readbuf.Write(b)
 					if err != nil {
 						return 0, err
 					}
-					default:
-						break loop
+				default:
+					break loop
 				}
 			}
 			if c.readbuf.Len() == 0 {
@@ -384,7 +385,8 @@ func (c *UTPConn) loop() {
 				c.close()
 			} else {
 				t, err := c.sendbuf.frontPushedTime()
-				if err == nil && time.Now().Sub(t) > time.Duration(c.rto)*time.Millisecond {
+				if err == nil && c.lastTimedOut != t && time.Now().Sub(t) > time.Duration(c.rto)*time.Millisecond {
+					c.lastTimedOut = t
 					c.stat.packetTimedOuts++
 					c.maxWindow /= 2
 					if c.maxWindow < mtu {
