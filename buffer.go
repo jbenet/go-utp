@@ -183,3 +183,47 @@ func (b *packetBuffer) processSelectiveACK(ack []byte) {
 		}
 	}
 }
+
+type timedBuffer struct {
+	d    time.Duration
+	root *timedBufferNode
+}
+
+type timedBufferNode struct {
+	val    float64
+	next   *timedBufferNode
+	pushed time.Time
+}
+
+func (b *timedBuffer) push(val float64) {
+	var before *timedBufferNode
+	for n := b.root; n != nil; n = n.next {
+		if time.Now().Sub(n.pushed) >= b.d {
+			if before != nil {
+				before.next = nil
+			} else {
+				b.root = nil
+			}
+			break
+		}
+		before = n
+	}
+	b.root = &timedBufferNode{
+		val:    val,
+		next:   b.root,
+		pushed: time.Now(),
+	}
+}
+
+func (b *timedBuffer) min() float64 {
+	if b.root == nil {
+		return 0
+	}
+	min := b.root.val
+	for n := b.root; n != nil; n = n.next {
+		if min > n.val {
+			min = n.val
+		}
+	}
+	return min
+}

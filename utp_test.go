@@ -553,6 +553,19 @@ func TestPacketBufferBoundary(t *testing.T) {
 	}
 }
 
+func TestTimedBufferNode(t *testing.T) {
+	b := timedBuffer{d: time.Millisecond * 100}
+	b.push(100)
+	b.push(200)
+	time.Sleep(time.Millisecond * 200)
+	b.push(300)
+	b.push(400)
+	m := b.min()
+	if m != 300 {
+		t.Errorf("expected min == 300; got %d", m)
+	}
+}
+
 func BenchmarkPacketMarshalBinary(t *testing.B) {
 	h := header{
 		typ:  st_fin,
