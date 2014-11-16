@@ -86,6 +86,40 @@ func TestReadWrite(t *testing.T) {
 	}
 }
 
+func TestRawReadWrite(t *testing.T) {
+	ln, err := Listen("utp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+
+	raddr, err := net.ResolveUDPAddr("udp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	c, err := net.DialUDP("udp", nil, raddr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	payload := []byte("Hello!")
+	_, err = c.Write(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var buf [256]byte
+	n, addr, err := ln.RawConn.ReadFrom(buf[:])
+	if !bytes.Equal(payload, buf[:n]) {
+		t.Errorf("expected payload of %v; got %v", payload, buf[:n])
+	}
+	if addr.String() != c.LocalAddr().String() {
+		t.Errorf("expected addr of %v; got %v", c.LocalAddr(), addr.String())
+	}
+}
+
 func TestLongReadWriteC2S(t *testing.T) {
 	ln, err := Listen("utp", "127.0.0.1:0")
 	if err != nil {

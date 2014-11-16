@@ -10,6 +10,7 @@ import (
 )
 
 type UTPListener struct {
+	RawConn  net.PacketConn
 	conn     net.PacketConn
 	conns    map[uint16]*UTPConn
 	accept   chan (*UTPConn)
@@ -40,6 +41,7 @@ func ListenUTP(n string, laddr *UTPAddr) (*UTPListener, error) {
 	}
 
 	l := UTPListener{
+		RawConn: newRawConn(conn),
 		conn:    conn,
 		conns:   make(map[uint16]*UTPConn),
 		accept:  make(chan (*UTPConn), 10),
@@ -60,6 +62,7 @@ type incoming struct {
 
 func (l *UTPListener) listen() {
 	inch := make(chan incoming)
+	raw := l.RawConn.(*rawConn)
 
 	// reads udp packets
 	go func() {
@@ -73,6 +76,15 @@ func (l *UTPListener) listen() {
 			p, err := readPacket(buf[:len])
 			if err == nil {
 				inch <- incoming{p, addr}
+			} else {
+				select {
+				case <-raw.closed:
+				default:
+					select {
+						case raw.in <- rawIncoming{b: buf[:len], addr: addr}:
+						default:
+					}
+				}
 			}
 		}
 	}()
@@ -192,6 +204,7 @@ func (l *UTPListener) Close() error {
 		return syscall.EINVAL
 	}
 	l.closech <- 0
+	l.RawConn.Close()
 	return nil
 }
 
@@ -200,5 +213,109 @@ func (l *UTPListener) SetDeadline(t time.Time) error {
 		return syscall.EINVAL
 	}
 	l.deadline = t
+	return nil
+}
+
+type rawIncoming struct {
+	b    []byte
+	addr net.Addr
+}
+
+type rawConn struct {
+	conn                 net.PacketConn
+	rdeadline, wdeadline time.Time
+	in                   chan rawIncoming
+	closed               chan int
+}
+
+func newRawConn(conn net.PacketConn) *rawConn {
+	return &rawConn{
+		conn:   conn,
+		in:     make(chan rawIncoming),
+		closed: make(chan int),
+	}
+}
+
+func (c *rawConn) ok() bool { return c != nil && c.conn != nil }
+
+func (c *rawConn) ReadFrom(b []byte) (n int, addr net.Addr, err error) {
+	if !c.ok() {
+		return 0, nil, syscall.EINVAL
+	}
+	select {
+	case <-c.closed:
+		return 0, nil, errors.New("use of closed network connection")
+	default:
+	}
+	var timeout <-chan time.Time
+	if !c.rdeadline.IsZero() {
+		timeout = time.After(c.rdeadline.Sub(time.Now()))
+	}
+	select {
+	case r := <-c.in:
+		return copy(b, r.b), r.addr, nil
+	case <-timeout:
+		return 0, nil, &timeoutError{}
+	}
+}
+
+func (c *rawConn) WriteTo(b []byte, addr net.Addr) (n int, err error) {
+	if !c.ok() {
+		return 0, syscall.EINVAL
+	}
+	select {
+	case <-c.closed:
+		return 0, errors.New("use of closed network connection")
+	default:
+	}
+	return c.conn.WriteTo(b, addr)
+}
+
+func (c *rawConn) Close() error {
+	if !c.ok() {
+		return syscall.EINVAL
+	}
+	select {
+	case <-c.closed:
+		return errors.New("use of closed network connection")
+	default:
+		close(c.closed)
+	}
+	return nil
+}
+
+func (c *rawConn) LocalAddr() net.Addr {
+	if !c.ok() {
+		return nil
+	}
+	return c.conn.LocalAddr()
+}
+
+func (c *rawConn) SetDeadline(t time.Time) error {
+	if !c.ok() {
+		return syscall.EINVAL
+	}
+	if err := c.SetReadDeadline(t); err != nil {
+		return err
+	}
+	if err := c.SetWriteDeadline(t); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *rawConn) SetReadDeadline(t time.Time) error {
+	if !c.ok() {
+		return syscall.EINVAL
+	}
+	c.rdeadline = t
+	return nil
+}
+
+func (c *rawConn) SetWriteDeadline(t time.Time) error {
+	if !c.ok() {
+		return syscall.EINVAL
+	}
+	c.wdeadline = t
 	return nil
 }
