@@ -3,24 +3,10 @@ package utp
 import "net"
 
 type UTPAddr struct {
-	addr net.Addr
+	net.Addr
 }
 
-func (a *UTPAddr) Network() string { return "utp" }
-
-func (a *UTPAddr) String() string {
-	if a == nil || a.addr == nil {
-		return "<nil>"
-	}
-	return a.addr.String()
-}
-
-func (a *UTPAddr) toAddr() net.Addr {
-	if a == nil || a.addr == nil {
-		return nil
-	}
-	return a.addr
-}
+func (a UTPAddr) Network() string { return "utp" }
 
 func utp2udp(n string) (string, error) {
 	switch n {
@@ -44,5 +30,5 @@ func ResolveUTPAddr(n, addr string) (*UTPAddr, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &UTPAddr{addr: udp}, nil
+	return &UTPAddr{Addr: udp}, nil
 }

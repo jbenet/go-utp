@@ -71,10 +71,10 @@ func dial(n string, laddr, raddr *UTPAddr, timeout time.Duration) (*UTPConn, err
 		if err != nil {
 			return nil, err
 		}
-		laddr = &UTPAddr{addr: addr}
+		laddr = &UTPAddr{Addr: addr}
 	}
 
-	conn, err := net.ListenPacket(udpnet, laddr.addr.String())
+	conn, err := net.ListenPacket(udpnet, laddr.Addr.String())
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +83,7 @@ func dial(n string, laddr, raddr *UTPAddr, timeout time.Duration) (*UTPConn, err
 
 	c := newUTPConn()
 	c.Conn = conn
-	c.raddr = raddr.addr
+	c.raddr = raddr.Addr
 	c.rid = id
 	c.sid = id + 1
 	c.seq = 1
@@ -168,11 +168,11 @@ func (c *UTPConn) Close() error {
 }
 
 func (c *UTPConn) LocalAddr() net.Addr {
-	return &UTPAddr{addr: c.Conn.LocalAddr().(*net.UDPAddr)}
+	return &UTPAddr{Addr: c.Conn.LocalAddr()}
 }
 
 func (c *UTPConn) RemoteAddr() net.Addr {
-	return &UTPAddr{addr: c.raddr}
+	return &UTPAddr{Addr: c.raddr}
 }
 
 func (c *UTPConn) Read(b []byte) (int, error) {
