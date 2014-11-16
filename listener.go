@@ -48,7 +48,7 @@ func ListenUTP(n string, laddr *UTPAddr) (*UTPListener, error) {
 		conn:    conn,
 		conns:   make(map[uint16]*UTPConn),
 		accept:  make(chan (*UTPConn), 10),
-		err:     make(chan (error)),
+		err:     make(chan (error), 1),
 		closech: make(chan int),
 		connch:  make(chan uint16),
 		lasterr: nil,
