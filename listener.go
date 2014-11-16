@@ -106,6 +106,7 @@ func (l *UTPListener) listen() {
 						ulog.Printf(2, "Listener(%v): All accepted connections are closed", l.conn.LocalAddr())
 						l.conn.Close()
 						ulog.Printf(1, "Listener(%v): Closed", l.conn.LocalAddr())
+						return
 					}
 				}
 			}
