@@ -83,10 +83,7 @@ func (l *UTPListener) listen() {
 				select {
 				case <-raw.closed:
 				default:
-					select {
-						case raw.in <- rawIncoming{b: buf[:len], addr: addr}:
-						default:
-					}
+					raw.in <- rawIncoming{b: buf[:len], addr: addr}
 				}
 			}
 		}
@@ -234,7 +231,7 @@ type rawConn struct {
 func newRawConn(conn net.PacketConn) *rawConn {
 	return &rawConn{
 		conn:   conn,
-		in:     make(chan rawIncoming),
+		in:     make(chan rawIncoming, 100),
 		closed: make(chan int),
 	}
 }
