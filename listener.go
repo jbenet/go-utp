@@ -10,7 +10,10 @@ import (
 )
 
 type UTPListener struct {
+	// RawConn represents an out-of-bounds connection.
+	// This allows a single socket to handle multiple protocols.
 	RawConn  net.PacketConn
+
 	conn     net.PacketConn
 	conns    map[uint16]*UTPConn
 	accept   chan (*UTPConn)
