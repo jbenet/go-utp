@@ -12,7 +12,7 @@ import (
 )
 
 type UTPConn struct {
-	Conn                             net.PacketConn
+	conn                             net.PacketConn
 	raddr                            net.Addr
 	rid, sid, seq, ack, lastAck      uint16
 	rtt, rttVar, minRtt, rto, dupAck int64
@@ -82,7 +82,7 @@ func dial(n string, laddr, raddr *UTPAddr, timeout time.Duration) (*UTPConn, err
 	id := uint16(rand.Intn(math.MaxUint16))
 
 	c := newUTPConn()
-	c.Conn = conn
+	c.conn = conn
 	c.raddr = raddr.Addr
 	c.rid = id
 	c.sid = id + 1
@@ -149,7 +149,7 @@ func newUTPConn() *UTPConn {
 	}
 }
 
-func (c *UTPConn) ok() bool { return c != nil && c.Conn != nil }
+func (c *UTPConn) ok() bool { return c != nil && c.conn != nil }
 
 func (c *UTPConn) Close() error {
 	if !c.ok() {
@@ -168,7 +168,7 @@ func (c *UTPConn) Close() error {
 }
 
 func (c *UTPConn) LocalAddr() net.Addr {
-	return &UTPAddr{Addr: c.Conn.LocalAddr()}
+	return &UTPAddr{Addr: c.conn.LocalAddr()}
 }
 
 func (c *UTPConn) RemoteAddr() net.Addr {
@@ -299,7 +299,7 @@ func readPacket(data []byte) (packet, error) {
 func (c *UTPConn) recv() {
 	for {
 		var buf [mtu]byte
-		len, addr, err := c.Conn.ReadFrom(buf[:])
+		len, addr, err := c.conn.ReadFrom(buf[:])
 		if err != nil {
 			return
 		}
@@ -422,9 +422,9 @@ func (c *UTPConn) sendPacket(b outgoingPacket) {
 	p := c.makePacket(b)
 	bin, err := p.MarshalBinary()
 	if err == nil {
-		ulog.Printf(3, "SEND %v -> %v: %v", c.Conn.LocalAddr(), c.raddr, p.String())
+		ulog.Printf(3, "SEND %v -> %v: %v", c.conn.LocalAddr(), c.raddr, p.String())
 		c.stat.sentPackets++
-		_, err = c.Conn.WriteTo(bin, c.raddr)
+		_, err = c.conn.WriteTo(bin, c.raddr)
 		if err != nil {
 			return
 		}
@@ -437,9 +437,9 @@ func (c *UTPConn) sendPacket(b outgoingPacket) {
 func (c *UTPConn) resendPacket(p packet) {
 	bin, err := p.MarshalBinary()
 	if err == nil {
-		ulog.Printf(3, "RESEND %v -> %v: %v", c.Conn.LocalAddr(), c.raddr, p.String())
+		ulog.Printf(3, "RESEND %v -> %v: %v", c.conn.LocalAddr(), c.raddr, p.String())
 		c.stat.resentPackets++
-		_, err = c.Conn.WriteTo(bin, c.raddr)
+		_, err = c.conn.WriteTo(bin, c.raddr)
 		if err != nil {
 			return
 		}
@@ -465,7 +465,7 @@ func (c *UTPConn) processPacket(p packet) bool {
 		}
 	}
 
-	ulog.Printf(3, "RECV %v -> %v: %v", c.raddr, c.Conn.LocalAddr(), p.String())
+	ulog.Printf(3, "RECV %v -> %v: %v", c.raddr, c.conn.LocalAddr(), p.String())
 	c.stat.receivedPackets++
 
 	if p.header.typ == st_state {
@@ -625,7 +625,7 @@ func (c *UTPConn) close() {
 		if c.closech != nil {
 			c.closech <- c.sid
 		} else {
-			c.Conn.Close()
+			c.conn.Close()
 		}
 
 		ulog.Printf(1, "Conn(%v): Closed", c.LocalAddr())

@@ -10,7 +10,7 @@ import (
 )
 
 type UTPListener struct {
-	Conn     net.PacketConn
+	conn     net.PacketConn
 	conns    map[uint16]*UTPConn
 	accept   chan (*UTPConn)
 	err      chan (error)
@@ -40,7 +40,7 @@ func ListenUTP(n string, laddr *UTPAddr) (*UTPListener, error) {
 	}
 
 	l := UTPListener{
-		Conn:    conn,
+		conn:    conn,
 		conns:   make(map[uint16]*UTPConn),
 		accept:  make(chan (*UTPConn), 10),
 		err:     make(chan (error)),
@@ -65,7 +65,7 @@ func (l *UTPListener) listen() {
 	go func() {
 		for {
 			var buf [mtu]byte
-			len, addr, err := l.Conn.ReadFrom(buf[:])
+			len, addr, err := l.conn.ReadFrom(buf[:])
 			if err != nil {
 				l.err <- err
 				return
@@ -83,24 +83,24 @@ func (l *UTPListener) listen() {
 			case i := <-inch:
 				l.processPacket(i.p, i.addr)
 			case <-l.closech:
-				ulog.Printf(2, "Listener(%v): Stop litening", l.Conn.LocalAddr())
+				ulog.Printf(2, "Listener(%v): Stop litening", l.conn.LocalAddr())
 				close(l.accept)
 				l.closed = true
 			case id := <-l.connch:
 				if _, ok := l.conns[id]; !ok {
 					delete(l.conns, id+1)
-					ulog.Printf(2, "Listener(%v): Connection closed #%d (alive: %d)", l.Conn.LocalAddr(), id, len(l.conns))
+					ulog.Printf(2, "Listener(%v): Connection closed #%d (alive: %d)", l.conn.LocalAddr(), id, len(l.conns))
 					if l.closed && len(l.conns) == 0 {
-						ulog.Printf(2, "Listener(%v): All accepted connections are closed", l.Conn.LocalAddr())
-						l.Conn.Close()
-						ulog.Printf(1, "Listener(%v): Closed", l.Conn.LocalAddr())
+						ulog.Printf(2, "Listener(%v): All accepted connections are closed", l.conn.LocalAddr())
+						l.conn.Close()
+						ulog.Printf(1, "Listener(%v): Closed", l.conn.LocalAddr())
 					}
 				}
 			}
 		}
 	}()
 
-	ulog.Printf(1, "Listener(%v): Start listening", l.Conn.LocalAddr())
+	ulog.Printf(1, "Listener(%v): Start listening", l.conn.LocalAddr())
 }
 
 func listenPacket(n, addr string) (net.PacketConn, error) {
@@ -128,7 +128,7 @@ func (l *UTPListener) processPacket(p packet, addr net.Addr) {
 			seq := rand.Intn(math.MaxUint16)
 
 			c := newUTPConn()
-			c.Conn = l.Conn
+			c.conn = l.conn
 			c.raddr = addr
 			c.rid = p.header.id + 1
 			c.sid = p.header.id
@@ -147,7 +147,7 @@ func (l *UTPListener) processPacket(p packet, addr net.Addr) {
 			}
 
 			l.conns[sid] = c
-			ulog.Printf(2, "Listener(%v): New incoming connection #%d from %v (alive: %d)", l.Conn.LocalAddr(), sid, addr, len(l.conns))
+			ulog.Printf(2, "Listener(%v): New incoming connection #%d from %v (alive: %d)", l.conn.LocalAddr(), sid, addr, len(l.conns))
 
 			l.accept <- c
 		}
@@ -159,7 +159,7 @@ func (l *UTPListener) Accept() (net.Conn, error) {
 }
 
 func (l *UTPListener) AcceptUTP() (*UTPConn, error) {
-	if l == nil || l.Conn == nil {
+	if l == nil || l.conn == nil {
 		return nil, syscall.EINVAL
 	}
 	if l.lasterr != nil {
@@ -184,11 +184,11 @@ func (l *UTPListener) AcceptUTP() (*UTPConn, error) {
 }
 
 func (l *UTPListener) Addr() net.Addr {
-	return &UTPAddr{Addr: l.Conn.LocalAddr()}
+	return &UTPAddr{Addr: l.conn.LocalAddr()}
 }
 
 func (l *UTPListener) Close() error {
-	if l == nil || l.Conn == nil {
+	if l == nil || l.conn == nil {
 		return syscall.EINVAL
 	}
 	l.closech <- 0
@@ -196,7 +196,7 @@ func (l *UTPListener) Close() error {
 }
 
 func (l *UTPListener) SetDeadline(t time.Time) error {
-	if l == nil || l.Conn == nil {
+	if l == nil || l.conn == nil {
 		return syscall.EINVAL
 	}
 	l.deadline = t
