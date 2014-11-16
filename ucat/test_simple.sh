@@ -11,6 +11,7 @@ test_send() {
   file=$1_
   count=$2
   addr=localhost:8765
+  prof="-profile=${file}profile"
 
   # generate random data
   log "generating $count bytes of random data"
@@ -18,9 +19,9 @@ test_send() {
 
   # dialer sends
   log "sending from dialer"
-  ./ucat -v $addr 2>&1 <${file}expected | sed "s/^/  dialer1: /" &
+  ./ucat -v ${prof}D1 $addr 2>&1 <${file}expected | sed "s/^/  dialer1: /" &
   dialer=$!
-  ./ucat -v -l $addr 2>&1 >${file}actual1 | sed "s/^/listener1: /"
+  ./ucat -v ${prof}L1 -l $addr 2>&1 >${file}actual1 | sed "s/^/listener1: /"
   listener=$!
 
   diff ${file}expected ${file}actual1
@@ -34,9 +35,9 @@ test_send() {
 
   # listener sends
   log "sending from listener"
-  ./ucat -v -l $addr 2>&1 <${file}expected | sed "s/^/listener2: /" &
+  ./ucat -v ${prof}L2 -l $addr 2>&1 <${file}expected | sed "s/^/listener2: /" &
   dialer=$!
-  ./ucat -v $addr 2>&1 >${file}actual2 | sed "s/^/  dialer2: /"
+  ./ucat -v ${prof}D2 $addr 2>&1 >${file}actual2 | sed "s/^/  dialer2: /"
   listener=$!
   diff ${file}expected ${file}actual2
   if test $? != 0; then

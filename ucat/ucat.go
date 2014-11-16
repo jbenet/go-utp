@@ -18,6 +18,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"runtime/pprof"
 	"syscall"
 
 	utp "github.com/h2so5/utp"
@@ -45,6 +46,7 @@ Address format is Go's: [host]:port
 type args struct {
 	listen     bool
 	verbose    bool
+	profile    string
 	localAddr  string
 	remoteAddr string
 }
@@ -56,6 +58,7 @@ func parseArgs() args {
 	flag.BoolVar(&a.listen, "listen", false, "listen for connections")
 	flag.BoolVar(&a.listen, "l", false, "listen for connections (short)")
 	flag.BoolVar(&a.verbose, "v", false, "verbose debugging")
+	flag.StringVar(&a.profile, "profile", "", "write cpu profile to file")
 	flag.Usage = Usage
 	flag.Parse()
 	osArgs := flag.Args()
@@ -80,6 +83,16 @@ func parseArgs() args {
 
 func main() {
 	args := parseArgs()
+
+	if args.profile != "" {
+		f, err := os.Create(args.profile)
+		if err != nil {
+			exit("%s", err)
+		}
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
+	}
+
 	verbose = args.verbose
 
 	var err error
